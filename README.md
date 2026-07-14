@@ -11,6 +11,7 @@ Extensión de Chrome (Manifest V3) para grabar pantalla, ventana o pestaña, pen
 - **Red incluida**: registra todas las peticiones `fetch`/XHR (método, URL, status, duración, headers) y las exporta en formato **HAR**, que se abre arrastrándolo a la pestaña Red de cualquier DevTools; los fallos (errores de red/CORS y 4xx/5xx) aparecen además en la línea de tiempo del log, entre los errores de consola
 - **Pasos para reproducir automáticos**: clicks (atribuidos al botón real, no al `<span>` decorativo), cambios de campo y envíos de formulario, numerados con su offset en `*.pasos.md`. Regla de privacidad: **jamás se registra el valor tecleado** — un reporte no necesita la contraseña del tester
 - **Marcadores «aquí está el bug»**: `Ctrl/Cmd+Shift+K` o el botón 💥 del popup dejan una marca con timestamp en plena grabación, que luego destaca en el informe
+- **Anotaciones sobre el vídeo**: `Ctrl/Cmd+Shift+Y` o el botón ✏️ del popup abren un lienzo de dibujo sobre la pestaña grabada (tres colores, borrar, Esc para salir). Como el trazo es DOM de la página, la captura lo graba sin tocar el pipeline de vídeo — y los gestos de dibujo no ensucian el registro de pasos
 - **Informe empaquetado** `*.informe.md`: entorno (URL, Chrome, SO, idioma, zona horaria, duración), resumen de errores JS / recursos rotos / peticiones fallidas, marcadores, errores en línea de tiempo y pasos — el ticket casi se escribe solo
 - Junto al `.webm` descarga `*.console.log` (legible), `*.console.json` (estructurado), `*.har` (red completa), `*.pasos.md` e `*.informe.md`
 - Sobrevive a navegaciones: si la pestaña cambia de página a mitad de grabación, el registro continúa y anota la URL nueva en la línea de tiempo
@@ -86,6 +87,7 @@ Dos herramientas, una capa cada una — elegir qué se testea con qué, y saber 
 - `network-capture.cy.js` — wrapper de red: fetch 200/500, resolución de URLs relativas, fallos de red con status 0, XHR con headers de petición/respuesta, XHR reutilizado sin duplicados, guarda de doble inyección
 - `bridge.cy.js` — puente del mundo aislado: entrada de navegación, agrupación en lotes, vaciado inmediato a las 50 entradas
 - `reports.cy.js` — generadores de informes del offscreen: formato de offsets, filtrado por interruptores, `.console.log`/`.console.json` y validez del HAR (pages por navegación, `pageref` por timestamp, queryString)
+- `annotate.cy.js` — superficie de anotación: toggle, dibujo con píxeles verificados en el canvas, borrar, Esc, y que los gestos de dibujo no contaminan el registro de pasos
 
 Cypress no puede navegar a `chrome-extension://` ni hablar con el service worker, y ahí es donde entra la otra suite.
 
@@ -96,6 +98,7 @@ Cypress no puede navegar a `chrome-extension://` ni hablar con el service worker
 - el popup reacciona en vivo al estado de grabación (`storage.session` + `storage.onChanged`)
 - `injectQaCapture` inyecta los wrappers reales vía `chrome.scripting` en el world MAIN, y funcionan (console y fetch publican entradas)
 - si la pestaña grabada navega, `tabs.onUpdated` reinyecta los registros
+- la anotación se activa desde el background (mismo camino que el popup y el atajo) y un trazo real del ratón pinta píxeles en el lienzo
 - las descargas se contabilizan por grupos: dos grabaciones encadenadas no se pisan la limpieza de blobs
 - `startTabRecording` sin gesto de usuario falla por el camino controlado: aviso en el popup y estado limpio
 
@@ -111,8 +114,8 @@ La dirección es un grabador orientado a reportes de bugs de QA. Hecho y pendien
 - [x] Informe empaquetado: entorno + resumen + marcadores + errores + pasos, listo para pegar en Jira o Linear
 - [x] Marcadores durante la grabación («aquí está el bug») con atajo de teclado y botón en el popup
 - [x] Tests E2E en dos capas (Cypress + Playwright) con CI en GitHub Actions
+- [x] Anotaciones sobre el vídeo durante la grabación (lienzo DOM sobre la pestaña: la captura lo graba gratis)
 - [ ] Subida directa del informe a Jira/Linear vía API
-- [ ] Anotaciones sobre el vídeo durante la grabación
 
 Los registros QA solo aplican al flujo de pestaña (una grabación de pantalla completa no tiene una pestaña asociada de la que leer) y a páginas `http(s)`.
 

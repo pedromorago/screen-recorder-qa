@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Grabador de pantalla",
-  "version": "1.7.1",
+  "version": "1.8.0",
   "description": "Graba tu pantalla, ventana o pestaña. Modo QA: consola, red (HAR), pasos e informe de bug sincronizados con el vídeo.",
   "permissions": [
     "desktopCapture",
@@ -44,6 +44,13 @@
         "mac": "Command+Shift+K"
       },
       "description": "Añadir un marcador de bug a la grabación"
+    },
+    "toggle-annotate": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+Y",
+        "mac": "Command+Shift+Y"
+      },
+      "description": "Dibujar sobre la pestaña grabada (anotación)"
     }
   }
 }

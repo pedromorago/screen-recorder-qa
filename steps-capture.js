@@ -61,6 +61,9 @@
   document.addEventListener(
     "click",
     (e) => {
+      // Los clicks sobre la superficie de anotación son gestos de dibujo,
+      // no pasos del usuario en la página.
+      if (e.target.closest && e.target.closest("#qa-recorder-annotate")) return;
       const el =
         (e.target.closest &&
           e.target.closest(

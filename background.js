@@ -104,6 +104,30 @@ async function injectQaCapture(tabId, { consoleCapture, networkCapture, stepsCap
     files: ["console-capture-bridge.js"],
     injectImmediately: true,
   });
+  // La superficie de anotación va SIEMPRE en el flujo de pestaña (no
+  // depende de los interruptores QA): dibuja DOM sobre la página y la
+  // captura lo graba sin tocar el pipeline de vídeo.
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    files: ["annotate-overlay.js"],
+    injectImmediately: true,
+  });
+}
+
+// Activa/desactiva la anotación sobre la pestaña grabada.
+async function toggleAnnotate() {
+  const { isRecording, captureTarget, recordedTabId } = await chrome.storage.session.get({
+    isRecording: false,
+    captureTarget: null,
+    recordedTabId: null,
+  });
+  if (!isRecording || captureTarget !== "offscreen" || recordedTabId == null) return;
+  try {
+    await chrome.tabs.sendMessage(recordedTabId, { type: "annotate:toggle" });
+  } catch (e) {
+    log("no se pudo alternar la anotación:", e);
+    await setNotice("warn", "No se pudo abrir la anotación en esta página.");
+  }
 }
 
 // Marcador «aquí está el bug»: desde el atajo de teclado o el popup.
@@ -133,8 +157,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
       networkCapture: false,
       stepsCapture: false,
     });
-  if (!isRecording || captureTarget !== "offscreen") return;
-  if (tabId !== recordedTabId || (!consoleCapture && !networkCapture && !stepsCapture)) return;
+  if (!isRecording || captureTarget !== "offscreen" || tabId !== recordedTabId) return;
   if (!injectableUrl(tab.url)) return;
   try {
     await injectQaCapture(tabId, { consoleCapture, networkCapture, stepsCapture });
@@ -199,8 +222,10 @@ async function startTabRecording() {
     });
     log("grabación de pestaña iniciada");
 
-    if (consoleCapture || networkCapture || stepsCapture) {
+    if (injectable) {
       try {
+        // Aunque los tres interruptores estén apagados se inyecta igual:
+        // la superficie de anotación no depende de ellos.
         await injectQaCapture(tab.id, { consoleCapture, networkCapture, stepsCapture });
         log("registros QA activos en la pestaña", tab.id, {
           consoleCapture,
@@ -211,13 +236,13 @@ async function startTabRecording() {
         log("no se pudieron inyectar los registros QA:", e);
         await setNotice(
           "warn",
-          "Se graba el vídeo, pero no se pudieron activar los registros QA en esta página."
+          "Se graba el vídeo, pero no se pudieron activar los registros QA ni la anotación en esta página."
         );
       }
     } else if (cfg.consoleLog || cfg.networkLog || cfg.stepsLog) {
       await setNotice(
         "warn",
-        "Los registros QA (consola, red, pasos) solo funcionan en páginas http(s); esta grabación irá sin ellos."
+        "Los registros QA (consola, red, pasos) y la anotación solo funcionan en páginas http(s); esta grabación irá sin ellos."
       );
     }
   } catch (e) {
@@ -335,6 +360,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
     case "popup:marker":
       addMarker().catch((e) => log("addMarker:", e));
+      break;
+
+    case "popup:annotate":
+      toggleAnnotate().catch((e) => log("toggleAnnotate:", e));
       break;
 
     case "rec:started":
@@ -514,6 +543,10 @@ chrome.windows.onRemoved.addListener(async (windowId) => {
 chrome.commands.onCommand.addListener(async (command) => {
   if (command === "add-marker") {
     addMarker().catch((e) => log("addMarker:", e));
+    return;
+  }
+  if (command === "toggle-annotate") {
+    toggleAnnotate().catch((e) => log("toggleAnnotate:", e));
     return;
   }
   if (command !== "toggle-recording") return;

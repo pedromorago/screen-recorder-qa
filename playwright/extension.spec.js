@@ -149,6 +149,40 @@ test("si la pestaña grabada navega, tabs.onUpdated reinyecta los registros", as
   await sw.evaluate(() => chrome.storage.session.set({ isRecording: false, recordedTabId: null }));
 });
 
+test("la anotación se activa desde el background y dibuja sobre la página grabada", async ({ context, sw }) => {
+  const page = await context.newPage();
+  await page.goto(SANDBOX);
+  const tabId = await sw.evaluate(async (url) => {
+    const [tab] = await chrome.tabs.query({ url });
+    return tab.id;
+  }, SANDBOX);
+  await sw.evaluate(
+    (tabId) =>
+      injectQaCapture(tabId, { consoleCapture: false, networkCapture: false, stepsCapture: false }),
+    tabId
+  );
+
+  // Mismo camino que el botón del popup y el atajo: mensaje al tab.
+  await sw.evaluate((tabId) => chrome.tabs.sendMessage(tabId, { type: "annotate:toggle" }), tabId);
+  await expect(page.locator("#qa-recorder-annotate")).toBeVisible();
+
+  // Un trazo real con el ratón pinta píxeles en el lienzo.
+  await page.mouse.move(200, 300);
+  await page.mouse.down();
+  await page.mouse.move(280, 360, { steps: 5 });
+  await page.mouse.up();
+  const painted = await page.evaluate(() => {
+    const c = document.querySelector("#qa-recorder-annotate canvas");
+    const d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
+    for (let i = 3; i < d.length; i += 4) if (d[i]) return true;
+    return false;
+  });
+  expect(painted).toBe(true);
+
+  await sw.evaluate((tabId) => chrome.tabs.sendMessage(tabId, { type: "annotate:toggle" }), tabId);
+  await expect(page.locator("#qa-recorder-annotate")).toBeHidden();
+});
+
 test("las descargas se contabilizan por grupos: grabaciones encadenadas no se pisan", async ({ sw }) => {
   // Dos grabaciones con descargas en vuelo a la vez (la 2ª terminó antes
   // de que acabaran las descargas de la 1ª). handleDownloadChanged debe

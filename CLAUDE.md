@@ -34,6 +34,13 @@ vídeo. JS plano, sin build: se carga descomprimida en Chrome.
   (entorno, contadores, marcadores, errores, ficheros). En el
   `.console.log` la red solo aparece si falló (error de red/CORS o status
   >= 400); la red completa va al `.har`.
+- Anotaciones (SOLO flujo de pestaña): `annotate-overlay.js` (world
+  aislado, inyectado SIEMPRE con los demás, sin depender de los
+  interruptores) monta un canvas fijo sobre la página; como es DOM, la
+  captura lo graba sin tocar el vídeo. Toggle: comando `toggle-annotate`
+  (Ctrl/Cmd+Shift+Y) o botón del popup → background →
+  `chrome.tabs.sendMessage(recordedTabId, "annotate:toggle")`. Los clicks
+  sobre `#qa-recorder-annotate` se excluyen del registro de pasos.
 - Mensajería: `chrome.runtime.sendMessage` con campo `target`
   ("background" | "offscreen" | "recorder").
 

@@ -9,6 +9,7 @@ const btnTab = document.getElementById("btnTab");
 const btnScreen = document.getElementById("btnScreen");
 const btnStop = document.getElementById("btnStop");
 const btnMarker = document.getElementById("btnMarker");
+const btnAnnotate = document.getElementById("btnAnnotate");
 const timerEl = document.getElementById("timer");
 const noticeEl = document.getElementById("notice");
 
@@ -125,6 +126,12 @@ btnMarker.addEventListener("click", async () => {
   // Feedback breve sin cerrar el popup.
   btnMarker.textContent = "💥 Marcado";
   setTimeout(() => (btnMarker.textContent = "💥 Marcar bug aquí"), 900);
+});
+
+btnAnnotate.addEventListener("click", async () => {
+  await chrome.runtime.sendMessage({ target: "background", type: "popup:annotate" });
+  // Se cierra para que el usuario pueda dibujar sobre la página al momento.
+  window.close();
 });
 
 // ---------- Init ----------
