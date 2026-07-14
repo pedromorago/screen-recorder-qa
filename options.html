@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Grabador de pantalla · Opciones</title>
+<style>
+  :root{
+    --bg:#141A20; --panel:#1E252E; --border:#2A323D; --border-hi:#3A4552;
+    --text:#E7ECF3; --muted:#8B95A4; --green:#34D399; --rec:#FF3B30; --focus:#5B9BFF;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{max-width:560px;margin:40px auto;padding:0 20px;background:var(--bg);color:var(--text);font-family:var(--sans)}
+  h1{font-size:18px;font-family:var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:18px;margin-bottom:16px}
+  label{display:block;font-size:13px;margin:12px 0 4px}
+  input,select{width:100%;padding:9px 10px;background:var(--bg);color:var(--text);border:1px solid var(--border-hi);border-radius:8px;font-family:var(--mono);font-size:13px}
+  input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+  .hint{font-size:11px;color:var(--muted);margin-top:4px;line-height:1.5}
+  .row{display:flex;align-items:center;gap:10px;margin-top:14px}
+  .row input[type=checkbox]{width:auto}
+  button{padding:10px 16px;border-radius:9px;border:1px solid var(--border-hi);background:var(--panel);color:var(--text);font-size:14px;font-weight:600;cursor:pointer}
+  button.primary{background:var(--green);border-color:var(--green);color:#08281B}
+  .actions{display:flex;gap:10px;margin-top:18px}
+  #status{margin-top:14px;padding:10px 12px;border-radius:9px;font-size:13px;display:none;line-height:1.5}
+  #status.ok{display:block;background:rgba(52,211,153,.12);border:1px solid rgba(52,211,153,.4);color:#7FE0B9}
+  #status.error{display:block;background:rgba(255,59,48,.12);border:1px solid rgba(255,59,48,.4);color:#FF9B94}
+  [data-provider="none"] #jiraFields,[data-provider="none"] #linearFields,[data-provider="none"] #commonFields{display:none}
+  [data-provider="jira"] #linearFields{display:none}
+  [data-provider="linear"] #jiraFields{display:none}
+</style>
+</head>
+<body data-provider="none">
+  <h1>Informe → Jira / Linear</h1>
+
+  <div class="panel">
+    <label for="provider">Proveedor</label>
+    <select id="provider">
+      <option value="none">Ninguno (no crear issues)</option>
+      <option value="jira">Jira Cloud</option>
+      <option value="linear">Linear</option>
+    </select>
+
+    <div id="jiraFields">
+      <label for="jiraSiteUrl">URL del sitio</label>
+      <input id="jiraSiteUrl" placeholder="https://tuequipo.atlassian.net">
+      <label for="jiraEmail">Email de la cuenta</label>
+      <input id="jiraEmail" type="email" placeholder="tu@email.com">
+      <label for="jiraApiToken">API token</label>
+      <input id="jiraApiToken" type="password" placeholder="Se crea en id.atlassian.com → Security → API tokens">
+      <label for="jiraProjectKey">Clave del proyecto</label>
+      <input id="jiraProjectKey" placeholder="QA">
+    </div>
+
+    <div id="linearFields">
+      <label for="linearApiKey">API key personal</label>
+      <input id="linearApiKey" type="password" placeholder="lin_api_… (Linear → Settings → API)">
+      <label for="linearTeamKey">Clave del equipo</label>
+      <input id="linearTeamKey" placeholder="QA (el prefijo de tus issues)">
+    </div>
+
+    <div id="commonFields">
+      <div class="row">
+        <input type="checkbox" id="autoCreate">
+        <label for="autoCreate" style="margin:0">Crear el issue automáticamente al parar cada grabación con modo QA</label>
+      </div>
+      <p class="hint">El issue se crea con el contenido de <code>.informe.md</code> como descripción. Los ficheros (vídeo, HAR…) quedan en tu carpeta de Descargas: adjúntalos al issue si hacen falta. Las credenciales se guardan solo en este navegador (chrome.storage.local); nunca salen de tu equipo salvo hacia tu propio Jira/Linear.</p>
+    </div>
+
+    <div class="actions">
+      <button class="primary" id="btnSave">Guardar</button>
+      <button id="btnTest">Probar conexión</button>
+    </div>
+    <div id="status"></div>
+  </div>
+
+  <script src="issue-reporter.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>

@@ -222,6 +222,57 @@ test("las descargas se contabilizan por grupos: grabaciones encadenadas no se pi
   expect(s.pendingDownloads).toBeNull();
 });
 
+test("con Jira configurado, el informe crea un issue desde el service worker (mock)", async ({ sw }) => {
+  await sw.evaluate(
+    (base) =>
+      chrome.storage.local.set({
+        issueReporter: {
+          provider: "jira",
+          autoCreate: true,
+          jira: {
+            siteUrl: base + "/mock/jira",
+            email: "tester@example.com",
+            apiToken: "token-secreto",
+            projectKey: "QA",
+          },
+        },
+      }),
+    BASE
+  );
+
+  // Mismo camino que al parar una grabación con informe.
+  await sw.evaluate(() =>
+    reportIssueIfConfigured({ title: "[QA Recorder] Demo", text: "# informe de prueba" })
+  );
+
+  const { notice } = await sw.evaluate(() => chrome.storage.session.get({ notice: null }));
+  expect(notice.kind).toBe("ok");
+  expect(notice.text).toContain("QA-123");
+  expect(notice.text).toContain("/mock/jira/browse/QA-123");
+
+  // El mock recibió la petición autenticada con el título correcto.
+  const last = await sw.evaluate(async (base) => (await fetch(base + "/mock/__last")).json(), BASE);
+  expect(last.jira.authorization).toContain("Basic ");
+  expect(last.jira.body.fields.summary).toBe("[QA Recorder] Demo");
+});
+
+test("sin autoCreate, el informe NO crea issues aunque haya credenciales", async ({ sw }) => {
+  await sw.evaluate(
+    (base) =>
+      chrome.storage.local.set({
+        issueReporter: {
+          provider: "jira",
+          autoCreate: false,
+          jira: { siteUrl: base + "/mock/jira", email: "x@x", apiToken: "t", projectKey: "QA" },
+        },
+      }),
+    BASE
+  );
+  await sw.evaluate(() => reportIssueIfConfigured({ title: "No debería subir", text: "x" }));
+  const { notice } = await sw.evaluate(() => chrome.storage.session.get({ notice: null }));
+  expect(notice).toBeNull();
+});
+
 test("startTabRecording sin gesto de usuario falla con aviso y sin quedarse grabando", async ({ context, sw }) => {
   const page = await context.newPage();
   await page.goto(SANDBOX);

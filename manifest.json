@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Grabador de pantalla",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "description": "Graba tu pantalla, ventana o pestaña. Modo QA: consola, red (HAR), pasos e informe de bug sincronizados con el vídeo.",
   "permissions": [
     "desktopCapture",
@@ -15,6 +15,10 @@
   "host_permissions": ["http://*/*", "https://*/*"],
   "background": {
     "service_worker": "background.js"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
   },
   "action": {
     "default_title": "Grabar pantalla",

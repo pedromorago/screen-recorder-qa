@@ -18,8 +18,80 @@ const MIME = {
   ".png": "image/png",
 };
 
+// Última petición recibida por los mocks de Jira/Linear, para que los
+// tests puedan asertar headers y cuerpo.
+const lastMock = {};
+
+function readBody(req) {
+  return new Promise((resolve) => {
+    let data = "";
+    req.on("data", (c) => (data += c));
+    req.on("end", () => resolve(data));
+  });
+}
+
+const json = (res, status, obj) => {
+  res.writeHead(status, { "Content-Type": "application/json" });
+  res.end(JSON.stringify(obj));
+};
+
+async function mockHandler(req, res, url) {
+  if (url.pathname === "/mock/__last") {
+    json(res, 200, lastMock);
+    return true;
+  }
+  if (url.pathname === "/mock/jira/rest/api/2/issue" && req.method === "POST") {
+    lastMock.jira = { authorization: req.headers.authorization, body: JSON.parse(await readBody(req)) };
+    json(res, 201, { id: "10001", key: "QA-123" });
+    return true;
+  }
+  if (url.pathname === "/mock/jira/rest/api/2/myself") {
+    lastMock.jiraMyself = { authorization: req.headers.authorization };
+    json(res, 200, { displayName: "Tester de Prueba" });
+    return true;
+  }
+  if (url.pathname === "/mock/jira-roto/rest/api/2/issue" && req.method === "POST") {
+    await readBody(req);
+    res.writeHead(401, { "Content-Type": "text/plain" });
+    res.end("credenciales inválidas");
+    return true;
+  }
+  if (url.pathname === "/mock/linear/graphql" && req.method === "POST") {
+    const body = JSON.parse(await readBody(req));
+    lastMock.linear = { authorization: req.headers.authorization, body };
+    if (body.query.includes("teams(")) {
+      json(res, 200, { data: { teams: { nodes: [{ id: "team-uuid-1" }] } } });
+    } else if (body.query.includes("issueCreate")) {
+      json(res, 200, {
+        data: {
+          issueCreate: {
+            success: true,
+            issue: { identifier: "QA-7", url: "https://linear.app/demo/issue/QA-7" },
+          },
+        },
+      });
+    } else if (body.query.includes("viewer")) {
+      json(res, 200, { data: { viewer: { name: "Tester de Prueba" } } });
+    } else {
+      json(res, 200, { data: {} });
+    }
+    return true;
+  }
+  return false;
+}
+
 function handler(req, res) {
   const url = new URL(req.url, "http://localhost");
+
+  if (url.pathname.startsWith("/mock/")) {
+    mockHandler(req, res, url).then((handled) => {
+      if (!handled) {
+        res.writeHead(404, { "Content-Type": "text/plain" });
+        res.end("mock no definido");
+      }
+    });
+    return;
+  }
 
   if (url.pathname === "/api/ok") {
     res.writeHead(200, {

@@ -14,6 +14,7 @@ Extensión de Chrome (Manifest V3) para grabar pantalla, ventana o pestaña, pen
 - **Anotaciones sobre el vídeo**: `Ctrl/Cmd+Shift+Y` o el botón ✏️ del popup abren un lienzo de dibujo sobre la pestaña grabada (tres colores, borrar, Esc para salir). Como el trazo es DOM de la página, la captura lo graba sin tocar el pipeline de vídeo — y los gestos de dibujo no ensucian el registro de pasos
 - **Informe empaquetado** `*.informe.md`: entorno (URL, Chrome, SO, idioma, zona horaria, duración), resumen de errores JS / recursos rotos / peticiones fallidas, marcadores, errores en línea de tiempo y pasos — el ticket casi se escribe solo
 - Junto al `.webm` descarga `*.console.log` (legible), `*.console.json` (estructurado), `*.har` (red completa), `*.pasos.md` e `*.informe.md`
+- **Issue automático en Jira o Linear**: configura tus credenciales en las Opciones de la extensión (token solo en `chrome.storage.local`, botón «Probar conexión») y, al parar cada grabación, el informe se convierte en un issue nuevo — el enlace aparece en el popup. Jira Cloud vía REST (Basic auth con API token) y Linear vía GraphQL (la clave de equipo se resuelve a id automáticamente)
 - Sobrevive a navegaciones: si la pestaña cambia de página a mitad de grabación, el registro continúa y anota la URL nueva en la línea de tiempo
 - Graba pantalla completa o una ventana, con el selector nativo de Chrome
 - Micrófono opcional, mezclado con el audio capturado
@@ -88,6 +89,7 @@ Dos herramientas, una capa cada una — elegir qué se testea con qué, y saber 
 - `bridge.cy.js` — puente del mundo aislado: entrada de navegación, agrupación en lotes, vaciado inmediato a las 50 entradas
 - `reports.cy.js` — generadores de informes del offscreen: formato de offsets, filtrado por interruptores, `.console.log`/`.console.json` y validez del HAR (pages por navegación, `pageref` por timestamp, queryString)
 - `annotate.cy.js` — superficie de anotación: toggle, dibujo con píxeles verificados en el canvas, borrar, Esc, y que los gestos de dibujo no contaminan el registro de pasos
+- `issue-reporter.cy.js` — creación de issues con fetch real contra mocks de Jira/Linear que capturan la petición: auth, payload, resolución de equipo en Linear, propagación de errores HTTP
 
 Cypress no puede navegar a `chrome-extension://` ni hablar con el service worker, y ahí es donde entra la otra suite.
 
@@ -100,6 +102,7 @@ Cypress no puede navegar a `chrome-extension://` ni hablar con el service worker
 - si la pestaña grabada navega, `tabs.onUpdated` reinyecta los registros
 - la anotación se activa desde el background (mismo camino que el popup y el atajo) y un trazo real del ratón pinta píxeles en el lienzo
 - las descargas se contabilizan por grupos: dos grabaciones encadenadas no se pisan la limpieza de blobs
+- con Jira configurado, el informe crea un issue desde el service worker real (contra el mock), y sin `autoCreate` no se crea nada aunque haya credenciales
 - `startTabRecording` sin gesto de usuario falla por el camino controlado: aviso en el popup y estado limpio
 
 **El único tramo no automatizado** es el corazón de la captura: `tabCapture`/`desktopCapture` exigen un gesto real del usuario sobre la extensión (clic en la barra de herramientas o selector nativo), que ningún framework puede fabricar. Ese tramo queda en el checklist manual de [`CLAUDE.md`](./CLAUDE.md) — y el test de Playwright verifica al menos que, sin ese gesto, el fallo es limpio y explicado.
@@ -115,7 +118,9 @@ La dirección es un grabador orientado a reportes de bugs de QA. Hecho y pendien
 - [x] Marcadores durante la grabación («aquí está el bug») con atajo de teclado y botón en el popup
 - [x] Tests E2E en dos capas (Cypress + Playwright) con CI en GitHub Actions
 - [x] Anotaciones sobre el vídeo durante la grabación (lienzo DOM sobre la pestaña: la captura lo graba gratis)
-- [ ] Subida directa del informe a Jira/Linear vía API
+- [x] Subida directa del informe a Jira/Linear vía API, con página de opciones y prueba de conexión
+- [ ] Adjuntar automáticamente los ficheros (vídeo, HAR) al issue creado
+- [ ] Port a Firefox (WebExtensions: `browser.*`, sin offscreen documents)
 
 Los registros QA solo aplican al flujo de pestaña (una grabación de pantalla completa no tiene una pestaña asociada de la que leer) y a páginas `http(s)`.
 

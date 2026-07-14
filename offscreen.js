@@ -240,6 +240,7 @@ function finalize() {
       filename: `${base}.pasos.md`,
     });
   }
+  let informeMsg = null;
   if (anyQaEnabled()) {
     // El informe se genera el último: lista los nombres del resto.
     const informe = buildInformeReport(
@@ -251,10 +252,15 @@ function finalize() {
       url: track(new Blob([informe], { type: "text/markdown" })),
       filename: `${base}.informe.md`,
     });
+    // Para el issue en Jira/Linear (si está configurado en el background).
+    informeMsg = {
+      title: "[QA Recorder] " + (qaMeta.title || qaMeta.url || name),
+      text: informe,
+    };
     log("registros QA:", qaEntries.length, "entradas");
   }
 
-  toBackground("sw:complete", { from: "offscreen", files, bytes: blob.size });
+  toBackground("sw:complete", { from: "offscreen", files, bytes: blob.size, informe: informeMsg });
   consoleEnabled = networkEnabled = stepsEnabled = false;
   cleanupStreams();
 }

@@ -41,6 +41,16 @@ vídeo. JS plano, sin build: se carga descomprimida en Chrome.
   (Ctrl/Cmd+Shift+Y) o botón del popup → background →
   `chrome.tabs.sendMessage(recordedTabId, "annotate:toggle")`. Los clicks
   sobre `#qa-recorder-annotate` se excluyen del registro de pasos.
+- Issues en Jira/Linear: `issue-reporter.js` (lógica pura + fetch, SIN
+  chrome.*: se carga con importScripts en el SW, con <script> en
+  options.html y en los tests) y `options.html/js` (credenciales en
+  `chrome.storage.local.issueReporter`, botón de probar conexión). Al
+  parar, el offscreen añade `informe: {title, text}` a `sw:complete` y el
+  background crea el issue si hay proveedor con autoCreate (aviso "ok"
+  con el enlace en el popup). Jira REST v2 (la v3 exige ADF), Linear
+  GraphQL con team key resuelta a id. Los mocks para tests viven en
+  `cypress/support/static-server.js` (`/mock/jira/*`,
+  `/mock/linear/graphql`, `/mock/__last` devuelve la última petición).
 - Mensajería: `chrome.runtime.sendMessage` con campo `target`
   ("background" | "offscreen" | "recorder").
 

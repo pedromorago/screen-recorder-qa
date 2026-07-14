@@ -7,6 +7,8 @@
 
 "use strict";
 
+importScripts("issue-reporter.js");
+
 const OFFSCREEN_URL = "offscreen.html";
 const log = (...a) => console.log("[SW]", ...a);
 
@@ -318,6 +320,28 @@ async function closeRecorderWindow() {
   }
 }
 
+// ---------- Issue en Jira/Linear al terminar ----------
+
+// Si hay proveedor configurado (options.html) con auto-crear activo, sube
+// el informe como issue nuevo y deja el enlace en el aviso del popup.
+async function reportIssueIfConfigured(informe) {
+  const { issueReporter } = await chrome.storage.local.get({ issueReporter: null });
+  if (!issueReporter || issueReporter.provider === "none" || !issueReporter.autoCreate) return;
+  const nombre = issueReporter.provider === "jira" ? "Jira" : "Linear";
+  try {
+    const res = await createIssueFromReport(issueReporter, informe.title, informe.text);
+    log("issue creado:", res.key, res.url);
+    await setNotice("ok", `Issue creado en ${nombre}: ${res.key} — ${res.url}`);
+  } catch (e) {
+    log("no se pudo crear el issue:", e);
+    await setNotice(
+      "error",
+      `El vídeo y los informes se guardaron, pero no se pudo crear el issue en ${nombre}: ` +
+        (e.message || e)
+    );
+  }
+}
+
 // ---------- Parar ----------
 
 async function stopRecording() {
@@ -436,6 +460,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           }
         }
         await setRecordingState(false);
+        if (msg.informe) {
+          // No bloquea las descargas: crea el issue en segundo plano.
+          reportIssueIfConfigured(msg.informe).catch((e) => log("issue:", e));
+        }
       })().catch((e) => {
         log("error al descargar:", e);
         setNotice("error", "No se pudo guardar el archivo: " + (e.message || e));
