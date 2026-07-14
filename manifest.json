@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Grabador de pantalla",
-  "version": "1.6.0",
-  "description": "Graba tu pantalla, una ventana o una pestaña con un clic. Modo QA: consola, errores JS y red (HAR) sincronizados con el vídeo.",
+  "version": "1.7.0",
+  "description": "Graba tu pantalla, ventana o pestaña. Modo QA: consola, red (HAR), pasos e informe de bug sincronizados con el vídeo.",
   "permissions": [
     "desktopCapture",
     "tabCapture",
@@ -37,6 +37,13 @@
         "mac": "Command+Shift+U"
       },
       "description": "Iniciar o detener la grabación"
+    },
+    "add-marker": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+K",
+        "mac": "Command+Shift+K"
+      },
+      "description": "Añadir un marcador de bug a la grabación"
     }
   }
 }

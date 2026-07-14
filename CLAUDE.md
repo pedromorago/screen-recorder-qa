@@ -18,17 +18,22 @@ vídeo. JS plano, sin build: se carga descomprimida en Chrome.
   permiso de micrófono.
 - Registros QA (SOLO flujo de pestaña): `console-capture-main.js`
   (world MAIN: envuelve console.*, window error/unhandledrejection y errores
-  de carga de recursos) y `network-capture-main.js` (world MAIN: envuelve
+  de carga de recursos), `network-capture-main.js` (world MAIN: envuelve
   fetch y XMLHttpRequest; método, URL, status, duración, headers acotados)
-  + `console-capture-bridge.js` (world aislado: agrupa en lotes y reenvía
-  al offscreen; común a ambos). El background los inyecta según los
-  interruptores con `chrome.scripting.executeScript` al iniciar y los
-  REINYECTA en `tabs.onUpdated` (status "loading") si la pestaña navega.
-  El offscreen acumula las entradas y al parar genera `.console.log` y
-  `.console.json` (offsets `+mm:ss.mmm` relativos al inicio del vídeo) y
-  `.har` (HAR 1.2; las navegaciones son las "pages"). En el `.console.log`
-  la red solo aparece si falló (error de red/CORS o status >= 400); la red
-  completa va al `.har`.
+  y `steps-capture.js` (world AISLADO: clicks, cambios de campo y submits;
+  NUNCA registra valores tecleados) + `console-capture-bridge.js` (world
+  aislado: agrupa en lotes y reenvía al offscreen; común a todos). El
+  background los inyecta según los interruptores con
+  `chrome.scripting.executeScript` al iniciar y los REINYECTA en
+  `tabs.onUpdated` (status "loading") si la pestaña navega. Marcadores:
+  comando `add-marker` (Ctrl/Cmd+Shift+K) o botón del popup → background
+  → `off:marker`. El offscreen acumula las entradas y al parar genera
+  `.console.log` y `.console.json` (offsets `+mm:ss.mmm` relativos al
+  inicio del vídeo), `.har` (HAR 1.2; las navegaciones son las "pages"),
+  `.pasos.md` (navs + pasos + marcadores numerados) y `.informe.md`
+  (entorno, contadores, marcadores, errores, ficheros). En el
+  `.console.log` la red solo aparece si falló (error de red/CORS o status
+  >= 400); la red completa va al `.har`.
 - Mensajería: `chrome.runtime.sendMessage` con campo `target`
   ("background" | "offscreen" | "recorder").
 
@@ -76,7 +81,8 @@ vídeo. JS plano, sin build: se carga descomprimida en Chrome.
    `offscreen.html` (`[offscreen]`) y `recorder.html` (`[recorder]`).
 4. Salida: `Descargas/grabaciones-pantalla/grabacion-<fecha>.webm` y, según
    interruptores (flujo de pestaña, página http/https),
-   `grabacion-<fecha>.console.log` + `.console.json` y `grabacion-<fecha>.har`.
+   `grabacion-<fecha>.console.log` + `.console.json`, `.har`, `.pasos.md`
+   e `.informe.md`.
    MP4: `ffmpeg -i entrada.webm -c:v libx264 -c:a aac salida.mp4`.
 5. Probar el registro de consola: grabar una pestaña, ejecutar en su consola
    `console.warn("hola"); setTimeout(() => { throw new Error("boom"); });`

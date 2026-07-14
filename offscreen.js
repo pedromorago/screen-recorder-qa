@@ -18,10 +18,13 @@ let blobUrls = [];
 const MAX_QA_ENTRIES = 10_000;
 let consoleEnabled = false;
 let networkEnabled = false;
+let stepsEnabled = false;
 let qaMeta = null; // { url, title }
-let qaEntries = []; // console/exception/rejection/resource/nav/net, orden de llegada
+let qaEntries = []; // console/exception/rejection/resource/nav/net/step/marker
 let qaDropped = 0;
 let videoStartTime = null;
+
+const anyQaEnabled = () => consoleEnabled || networkEnabled || stepsEnabled;
 
 // Los wrappers quedan instalados en la página entre grabaciones (ver
 // CLAUDE.md), así que puede llegar de todo: se filtra por tipo según los
@@ -29,7 +32,8 @@ let videoStartTime = null;
 function acceptsEntry(e) {
   if (!e || typeof e !== "object") return false;
   if (e.kind === "net") return networkEnabled;
-  if (e.kind === "nav") return consoleEnabled || networkEnabled;
+  if (e.kind === "step") return stepsEnabled;
+  if (e.kind === "nav") return anyQaEnabled();
   return consoleEnabled;
 }
 
@@ -70,6 +74,21 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     return false;
   }
 
+  // Marcador de bug (atajo o botón del popup, vía background).
+  if (msg.type === "off:marker") {
+    if (anyQaEnabled() && recorder && qaEntries.length < MAX_QA_ENTRIES) {
+      qaEntries.push({
+        kind: "marker",
+        level: "warn",
+        t: msg.t || Date.now(),
+        text: "Marcador del usuario: aquí está el bug",
+      });
+      log("marcador añadido");
+    }
+    sendResponse({ ok: true });
+    return false;
+  }
+
   // Lotes de entradas desde console-capture-bridge.js (pestaña grabada).
   if (msg.type === "off:consoleEntries") {
     if (recorder && Array.isArray(msg.entries)) {
@@ -91,12 +110,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
 // ---------- Captura de pestaña ----------
 
-async function start({ streamId, systemAudio, mic, quality, consoleCapture, networkCapture, tabUrl, tabTitle }) {
+async function start({ streamId, systemAudio, mic, quality, consoleCapture, networkCapture, stepsCapture, tabUrl, tabTitle }) {
   const q = QUALITY[quality] || QUALITY.medium;
-  log("start", { systemAudio, mic, quality, consoleCapture, networkCapture });
+  log("start", { systemAudio, mic, quality, consoleCapture, networkCapture, stepsCapture });
 
   consoleEnabled = !!consoleCapture;
   networkEnabled = !!networkCapture;
+  stepsEnabled = !!stepsCapture;
   qaMeta = { url: tabUrl || "", title: tabTitle || "" };
   qaEntries = [];
   qaDropped = 0;
@@ -191,7 +211,9 @@ function finalize() {
   blobUrls.forEach((u) => URL.revokeObjectURL(u));
   blobUrls = [];
 
-  const base = `grabaciones-pantalla/grabacion-${stamp()}`;
+  const name = `grabacion-${stamp()}`;
+  const base = `grabaciones-pantalla/${name}`;
+  const durationMs = videoStartTime ? Date.now() - videoStartTime : 0;
   const files = [{ url: track(blob), filename: `${base}.webm`, bytes: blob.size }];
 
   // El puente puede haber enviado lotes desordenados: orden estable por t.
@@ -210,12 +232,28 @@ function finalize() {
       filename: `${base}.har`,
     });
   }
-  if (consoleEnabled || networkEnabled) {
+  if (stepsEnabled) {
+    files.push({
+      url: track(new Blob([buildStepsReport()], { type: "text/markdown" })),
+      filename: `${base}.pasos.md`,
+    });
+  }
+  if (anyQaEnabled()) {
+    // El informe se genera el último: lista los nombres del resto.
+    const informe = buildInformeReport(
+      name,
+      durationMs,
+      files.map((f) => f.filename.split("/").pop()).concat(`${name}.informe.md`)
+    );
+    files.push({
+      url: track(new Blob([informe], { type: "text/markdown" })),
+      filename: `${base}.informe.md`,
+    });
     log("registros QA:", qaEntries.length, "entradas");
   }
 
   toBackground("sw:complete", { from: "offscreen", files, bytes: blob.size });
-  consoleEnabled = networkEnabled = false;
+  consoleEnabled = networkEnabled = stepsEnabled = false;
   cleanupStreams();
 }
 
@@ -257,7 +295,11 @@ function buildConsoleReport() {
     "\n\n";
 
   const label = (e) =>
-    e.kind === "nav" ? "NAV" : e.kind === "net" ? "NET" : (e.level || "log").toUpperCase();
+    e.kind === "nav" ? "NAV"
+    : e.kind === "net" ? "NET"
+    : e.kind === "step" ? "STEP"
+    : e.kind === "marker" ? "MARK"
+    : (e.level || "log").toUpperCase();
 
   const text =
     header +
@@ -289,6 +331,97 @@ function buildConsoleReport() {
   );
 
   return { text, json };
+}
+
+// .pasos.md: lista numerada de navegaciones, pasos del usuario y
+// marcadores, con su offset. Pegable tal cual en un ticket.
+function buildStepsReport() {
+  const pasos = qaEntries.filter(
+    (e) => e.kind === "step" || e.kind === "nav" || e.kind === "marker"
+  );
+  const header =
+    `# Pasos para reproducir — ${qaMeta.title || qaMeta.url || "grabación"}\n\n` +
+    `Grabación iniciada el ${new Date(videoStartTime || Date.now()).toISOString()} en ${qaMeta.url}\n` +
+    "Los offsets son relativos al inicio del vídeo. Los valores tecleados por el usuario NO se registran.\n\n";
+
+  if (!pasos.length) return header + "(sin pasos registrados durante la grabación)\n";
+
+  return (
+    header +
+    pasos
+      .map((e, i) => {
+        const texto =
+          e.kind === "nav" ? `Ir a ${e.text}` : e.kind === "marker" ? `💥 ${e.text}` : e.text;
+        return `${i + 1}. [${offset(e.t)}] ${texto}`;
+      })
+      .join("\n") +
+    "\n"
+  );
+}
+
+// .informe.md: el resumen ejecutivo de la grabación (entorno, contadores,
+// marcadores, errores y pasos), listo para pegar en Jira/Linear.
+function buildInformeReport(name, durationMs, fileNames) {
+  const fmtDur = (ms) => {
+    const s = Math.round(ms / 1000);
+    const h = Math.floor(s / 3600);
+    return (h ? pad(h) + ":" : "") + `${pad(Math.floor(s / 60) % 60)}:${pad(s % 60)}`;
+  };
+  const chrome_ = (navigator.userAgent.match(/Chrome\/([\d.]+)/) || [])[1] || "?";
+  const count = (fn) => qaEntries.filter(fn).length;
+
+  const erroresJs = count((e) => e.kind === "exception" || e.kind === "rejection");
+  const recursos = count((e) => e.kind === "resource");
+  const redTotal = count((e) => e.kind === "net");
+  const redFallida = count(isNetFailure);
+  const marcadores = qaEntries.filter((e) => e.kind === "marker");
+  const pasos = count((e) => e.kind === "step");
+  const errores = qaEntries.filter((e) => e.level === "error");
+
+  const lineas = [];
+  lineas.push(`# Informe de grabación QA — ${qaMeta.title || "(sin título)"}`);
+  lineas.push("");
+  lineas.push("## Entorno");
+  lineas.push("");
+  lineas.push(`- URL: ${qaMeta.url}`);
+  lineas.push(`- Inicio: ${new Date(videoStartTime || Date.now()).toISOString()}`);
+  lineas.push(`- Duración: ${fmtDur(durationMs)}`);
+  lineas.push(`- Chrome: ${chrome_} · SO: ${navigator.platform}`);
+  lineas.push(`- Idioma: ${navigator.language} · Zona horaria: ${Intl.DateTimeFormat().resolvedOptions().timeZone}`);
+  lineas.push(`- User agent: ${navigator.userAgent}`);
+  lineas.push("");
+  lineas.push("## Resumen");
+  lineas.push("");
+  lineas.push(`- Errores JS (excepciones y promesas rechazadas): ${erroresJs}`);
+  lineas.push(`- Recursos que no cargaron: ${recursos}`);
+  lineas.push(`- Peticiones fallidas: ${redFallida} de ${redTotal} registradas`);
+  lineas.push(`- Marcadores del usuario: ${marcadores.length}`);
+  lineas.push(`- Pasos registrados: ${pasos}`);
+  if (qaDropped) lineas.push(`- Entradas descartadas por límite: ${qaDropped}`);
+
+  if (marcadores.length) {
+    lineas.push("");
+    lineas.push("## Marcadores («aquí está el bug»)");
+    lineas.push("");
+    for (const m of marcadores) lineas.push(`- [${offset(m.t)}] 💥 ${m.text}`);
+  }
+
+  if (errores.length) {
+    lineas.push("");
+    lineas.push("## Errores en la línea de tiempo");
+    lineas.push("");
+    for (const e of errores.slice(0, 50)) {
+      lineas.push(`- [${offset(e.t)}] ${e.text.split("\n")[0]}`);
+    }
+    if (errores.length > 50) lineas.push(`- … y ${errores.length - 50} más (ver .console.log)`);
+  }
+
+  lineas.push("");
+  lineas.push("## Ficheros de esta grabación");
+  lineas.push("");
+  for (const f of fileNames) lineas.push(`- ${f}`);
+  lineas.push("");
+  return lineas.join("\n");
 }
 
 // HAR 1.2 con todas las peticiones fetch/XHR. Las navegaciones de la

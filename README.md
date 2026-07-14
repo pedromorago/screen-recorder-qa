@@ -1,13 +1,18 @@
 # Grabador de pantalla · modo QA
 
-Extensión de Chrome (Manifest V3) para grabar pantalla, ventana o pestaña, pensada para reportar bugs: además del vídeo, registra la consola y los errores JS de la página, sincronizados con la grabación. Sin límites de tiempo, sin marca de agua, sin cuenta.
+[![tests](https://github.com/pedro-morago/grabador-pantalla/actions/workflows/tests.yml/badge.svg)](https://github.com/pedro-morago/grabador-pantalla/actions/workflows/tests.yml)
+
+Extensión de Chrome (Manifest V3) para grabar pantalla, ventana o pestaña, pensada para reportar bugs: además del vídeo, registra la consola, los errores JS, la red y los pasos del usuario, todo sincronizado con la grabación, y lo condensa en un informe listo para pegar en un ticket. Sin límites de tiempo, sin marca de agua, sin cuenta.
 
 ## Qué hace
 
 - Graba la pestaña actual con un clic, audio incluido automáticamente
 - **Modo QA**: al grabar una pestaña, captura `console.log/warn/error`, excepciones no controladas, promesas rechazadas y recursos que no cargan (404 de imágenes/scripts), cada entrada con su offset `+mm:ss.mmm` respecto al vídeo — "el error saltó en el segundo 12" deja de ser una frase y pasa a ser una línea de log
 - **Red incluida**: registra todas las peticiones `fetch`/XHR (método, URL, status, duración, headers) y las exporta en formato **HAR**, que se abre arrastrándolo a la pestaña Red de cualquier DevTools; los fallos (errores de red/CORS y 4xx/5xx) aparecen además en la línea de tiempo del log, entre los errores de consola
-- Junto al `.webm` descarga `*.console.log` (legible, listo para pegar en un ticket), `*.console.json` (estructurado, con metadatos de página y navegador) y `*.har` (red completa)
+- **Pasos para reproducir automáticos**: clicks (atribuidos al botón real, no al `<span>` decorativo), cambios de campo y envíos de formulario, numerados con su offset en `*.pasos.md`. Regla de privacidad: **jamás se registra el valor tecleado** — un reporte no necesita la contraseña del tester
+- **Marcadores «aquí está el bug»**: `Ctrl/Cmd+Shift+K` o el botón 💥 del popup dejan una marca con timestamp en plena grabación, que luego destaca en el informe
+- **Informe empaquetado** `*.informe.md`: entorno (URL, Chrome, SO, idioma, zona horaria, duración), resumen de errores JS / recursos rotos / peticiones fallidas, marcadores, errores en línea de tiempo y pasos — el ticket casi se escribe solo
+- Junto al `.webm` descarga `*.console.log` (legible), `*.console.json` (estructurado), `*.har` (red completa), `*.pasos.md` e `*.informe.md`
 - Sobrevive a navegaciones: si la pestaña cambia de página a mitad de grabación, el registro continúa y anota la URL nueva en la línea de tiempo
 - Graba pantalla completa o una ventana, con el selector nativo de Chrome
 - Micrófono opcional, mezclado con el audio capturado
@@ -101,11 +106,14 @@ La dirección es un grabador orientado a reportes de bugs de QA. Hecho y pendien
 
 - [x] Registro de consola y errores JS sincronizado con el vídeo
 - [x] Peticiones de red (`fetch`/XHR con status, duración y headers), exportadas en HAR; los fallos, también en la línea de tiempo del log
-- [ ] Pasos para reproducir generados automáticamente (clicks y navegaciones con timestamp)
-- [ ] Informe empaquetado: vídeo + logs + red + pasos + metadatos del entorno, listo para pegar en Jira o Linear
-- [ ] Marcadores durante la grabación («aquí está el bug») con atajo de teclado
+- [x] Pasos para reproducir generados automáticamente (clicks, campos y formularios con timestamp, sin valores)
+- [x] Informe empaquetado: entorno + resumen + marcadores + errores + pasos, listo para pegar en Jira o Linear
+- [x] Marcadores durante la grabación («aquí está el bug») con atajo de teclado y botón en el popup
+- [x] Tests E2E en dos capas (Cypress + Playwright) con CI en GitHub Actions
+- [ ] Subida directa del informe a Jira/Linear vía API
+- [ ] Anotaciones sobre el vídeo durante la grabación
 
-El registro de consola solo aplica al flujo de pestaña (una grabación de pantalla completa no tiene una pestaña asociada de la que leer) y a páginas `http(s)`.
+Los registros QA solo aplican al flujo de pestaña (una grabación de pantalla completa no tiene una pestaña asociada de la que leer) y a páginas `http(s)`.
 
 ## Licencia
 

@@ -9,6 +9,7 @@ const SET_STATE = `
   videoStartTime = 1000;
   consoleEnabled = true;
   networkEnabled = true;
+  stepsEnabled = true;
   qaDropped = 0;
   qaMeta = { url: "https://app.example/checkout", title: "Checkout" };
   qaEntries = [
@@ -20,7 +21,9 @@ const SET_STATE = `
              status: 200, statusText: "OK", durationMs: 120, requestHeaders: [],
              responseHeaders: [{ name: "content-type", value: "application/json" }],
              contentType: "application/json", contentLength: 42, error: "" } },
+    { kind: "step", level: "info", t: 15000, text: "Click en <button#pagar «Pagar»>" },
     { kind: "nav", level: "info", t: 20000, text: "https://app.example/pago" },
+    { kind: "marker", level: "warn", t: 20500, text: "Marcador del usuario: aquí está el bug" },
     { kind: "net", level: "error", t: 21000,
       text: "POST https://api.example/pagar → 500 Internal Server Error (200 ms)",
       net: { initiator: "xhr", url: "https://api.example/pagar", method: "POST",
@@ -63,6 +66,8 @@ describe("offscreen.js: generación de informes", () => {
       const { text } = win.eval("buildConsoleReport()");
       expect(text).to.include("# Página: Checkout — https://app.example/checkout");
       expect(text).to.include("[+00:07.500] WARN  stock bajo");
+      expect(text).to.include("[+00:14.000] STEP  Click en <button#pagar «Pagar»>");
+      expect(text).to.include("[+00:19.500] MARK  Marcador del usuario");
       expect(text).to.include("[+00:20.000] NET   POST https://api.example/pagar → 500");
       expect(text).to.include("[+00:20.500] ERROR TypeError: total is undefined");
       // La red sana no mete ruido en el log: ya está completa en el .har.
@@ -105,6 +110,38 @@ describe("offscreen.js: generación de informes", () => {
       expect(ok.timings.wait).to.equal(120);
       expect(fallo.request.method).to.equal("POST");
       expect(fallo.response.status).to.equal(500);
+    });
+  });
+
+  it("el .pasos.md numera navegaciones, pasos y marcadores con sus offsets", () => {
+    cy.window().then((win) => {
+      const md = win.eval("buildStepsReport()");
+      expect(md).to.include("# Pasos para reproducir — Checkout");
+      expect(md).to.include("Los valores tecleados por el usuario NO se registran");
+      expect(md).to.include("1. [+00:00.000] Ir a https://app.example/checkout");
+      expect(md).to.include("2. [+00:14.000] Click en <button#pagar «Pagar»>");
+      expect(md).to.include("3. [+00:19.000] Ir a https://app.example/pago");
+      expect(md).to.include("4. [+00:19.500] 💥 Marcador del usuario");
+    });
+  });
+
+  it("el .informe.md resume entorno, contadores, marcadores y errores", () => {
+    cy.window().then((win) => {
+      const md = win.eval(
+        `buildInformeReport("grabacion-TEST", 95000, ["grabacion-TEST.webm", "grabacion-TEST.har"])`
+      );
+      expect(md).to.include("# Informe de grabación QA — Checkout");
+      expect(md).to.include("- URL: https://app.example/checkout");
+      expect(md).to.include("- Duración: 01:35");
+      expect(md).to.include("- Errores JS (excepciones y promesas rechazadas): 1");
+      expect(md).to.include("- Peticiones fallidas: 1 de 2 registradas");
+      expect(md).to.include("- Marcadores del usuario: 1");
+      expect(md).to.include("- Pasos registrados: 1");
+      expect(md).to.include("## Marcadores («aquí está el bug»)");
+      expect(md).to.include("- [+00:19.500] 💥 Marcador del usuario");
+      expect(md).to.include("## Errores en la línea de tiempo");
+      expect(md).to.include("TypeError: total is undefined");
+      expect(md).to.include("- grabacion-TEST.webm");
     });
   });
 

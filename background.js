@@ -74,7 +74,7 @@ const injectableUrl = (url) => /^https?:/.test(url || "");
 
 // Wrappers en el mundo MAIN (ahí no hay chrome.runtime) + un puente en el
 // mundo aislado que reenvía todo al offscreen.
-async function injectQaCapture(tabId, { consoleCapture, networkCapture }) {
+async function injectQaCapture(tabId, { consoleCapture, networkCapture, stepsCapture }) {
   if (consoleCapture) {
     await chrome.scripting.executeScript({
       target: { tabId },
@@ -91,6 +91,14 @@ async function injectQaCapture(tabId, { consoleCapture, networkCapture }) {
       injectImmediately: true,
     });
   }
+  if (stepsCapture) {
+    // Los pasos del usuario se ven desde el mundo aislado: no necesita MAIN.
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ["steps-capture.js"],
+      injectImmediately: true,
+    });
+  }
   await chrome.scripting.executeScript({
     target: { tabId },
     files: ["console-capture-bridge.js"],
@@ -98,23 +106,38 @@ async function injectQaCapture(tabId, { consoleCapture, networkCapture }) {
   });
 }
 
+// Marcador «aquí está el bug»: desde el atajo de teclado o el popup.
+async function addMarker() {
+  const { isRecording, captureTarget } = await chrome.storage.session.get({
+    isRecording: false,
+    captureTarget: null,
+  });
+  if (!isRecording || captureTarget !== "offscreen") return;
+  try {
+    await sendTo("offscreen", { type: "off:marker", t: Date.now() }, 2);
+  } catch (e) {
+    log("no se pudo añadir el marcador:", e);
+  }
+}
+
 // Si la pestaña grabada navega, los content scripts desaparecen:
 // se reinyectan en cuanto empieza a cargar el documento nuevo.
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   if (changeInfo.status !== "loading") return;
-  const { isRecording, captureTarget, recordedTabId, consoleCapture, networkCapture } =
+  const { isRecording, captureTarget, recordedTabId, consoleCapture, networkCapture, stepsCapture } =
     await chrome.storage.session.get({
       isRecording: false,
       captureTarget: null,
       recordedTabId: null,
       consoleCapture: false,
       networkCapture: false,
+      stepsCapture: false,
     });
   if (!isRecording || captureTarget !== "offscreen") return;
-  if (tabId !== recordedTabId || (!consoleCapture && !networkCapture)) return;
+  if (tabId !== recordedTabId || (!consoleCapture && !networkCapture && !stepsCapture)) return;
   if (!injectableUrl(tab.url)) return;
   try {
-    await injectQaCapture(tabId, { consoleCapture, networkCapture });
+    await injectQaCapture(tabId, { consoleCapture, networkCapture, stepsCapture });
     log("registros QA reinyectados tras navegar", tab.url);
   } catch (e) {
     log("no se pudieron reinyectar los registros QA:", e);
@@ -143,10 +166,12 @@ async function startTabRecording() {
       quality: "medium",
       consoleLog: true,
       networkLog: true,
+      stepsLog: true,
     });
     const injectable = injectableUrl(tab.url);
     const consoleCapture = cfg.consoleLog && injectable;
     const networkCapture = cfg.networkLog && injectable;
+    const stepsCapture = cfg.stepsLog && injectable;
     await ensureOffscreen();
     // El offscreen solo responde ok:true cuando getUserMedia y
     // MediaRecorder han arrancado de verdad. Sin carreras de estado.
@@ -158,6 +183,7 @@ async function startTabRecording() {
       quality: cfg.quality,
       consoleCapture,
       networkCapture,
+      stepsCapture,
       tabUrl: tab.url,
       tabTitle: tab.title,
     });
@@ -165,24 +191,33 @@ async function startTabRecording() {
       throw new Error((res && res.error) || "el offscreen no confirmó el inicio");
     }
     await setRecordingState(true, Date.now(), "offscreen");
-    await chrome.storage.session.set({ recordedTabId: tab.id, consoleCapture, networkCapture });
+    await chrome.storage.session.set({
+      recordedTabId: tab.id,
+      consoleCapture,
+      networkCapture,
+      stepsCapture,
+    });
     log("grabación de pestaña iniciada");
 
-    if (consoleCapture || networkCapture) {
+    if (consoleCapture || networkCapture || stepsCapture) {
       try {
-        await injectQaCapture(tab.id, { consoleCapture, networkCapture });
-        log("registros QA activos en la pestaña", tab.id, { consoleCapture, networkCapture });
+        await injectQaCapture(tab.id, { consoleCapture, networkCapture, stepsCapture });
+        log("registros QA activos en la pestaña", tab.id, {
+          consoleCapture,
+          networkCapture,
+          stepsCapture,
+        });
       } catch (e) {
         log("no se pudieron inyectar los registros QA:", e);
         await setNotice(
           "warn",
-          "Se graba el vídeo, pero no se pudieron activar los registros de consola/red en esta página."
+          "Se graba el vídeo, pero no se pudieron activar los registros QA en esta página."
         );
       }
-    } else if (cfg.consoleLog || cfg.networkLog) {
+    } else if (cfg.consoleLog || cfg.networkLog || cfg.stepsLog) {
       await setNotice(
         "warn",
-        "Los registros de consola y red solo funcionan en páginas http(s); esta grabación irá sin ellos."
+        "Los registros QA (consola, red, pasos) solo funcionan en páginas http(s); esta grabación irá sin ellos."
       );
     }
   } catch (e) {
@@ -296,6 +331,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
     case "popup:stop":
       stopRecording().catch((e) => log("stopRecording:", e));
+      break;
+
+    case "popup:marker":
+      addMarker().catch((e) => log("addMarker:", e));
       break;
 
     case "rec:started":
@@ -446,9 +485,14 @@ chrome.windows.onRemoved.addListener(async (windowId) => {
   }
 });
 
-// Atajo de teclado: para si está grabando; si no, abre el flujo de
-// pantalla/ventana (funciona en cualquier página, incluidas chrome://).
+// Atajos de teclado. toggle-recording: para si está grabando; si no, abre
+// el flujo de pantalla/ventana (funciona en cualquier página, incluidas
+// chrome://). add-marker: marcador de bug en la grabación de pestaña.
 chrome.commands.onCommand.addListener(async (command) => {
+  if (command === "add-marker") {
+    addMarker().catch((e) => log("addMarker:", e));
+    return;
+  }
   if (command !== "toggle-recording") return;
   const { isRecording } = await chrome.storage.session.get({ isRecording: false });
   isRecording ? stopRecording() : startScreenRecording();

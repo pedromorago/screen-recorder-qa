@@ -3,10 +3,12 @@
 const micIn = document.getElementById("mic");
 const consoleIn = document.getElementById("consoleLog");
 const networkIn = document.getElementById("networkLog");
+const stepsIn = document.getElementById("stepsLog");
 const qualitySel = document.getElementById("quality");
 const btnTab = document.getElementById("btnTab");
 const btnScreen = document.getElementById("btnScreen");
 const btnStop = document.getElementById("btnStop");
+const btnMarker = document.getElementById("btnMarker");
 const timerEl = document.getElementById("timer");
 const noticeEl = document.getElementById("notice");
 
@@ -23,7 +25,7 @@ function fmt(ms) {
 
 function render({ isRecording, startTime, notice }) {
   document.body.dataset.state = isRecording ? "recording" : "idle";
-  micIn.disabled = consoleIn.disabled = networkIn.disabled = qualitySel.disabled = isRecording;
+  micIn.disabled = consoleIn.disabled = networkIn.disabled = stepsIn.disabled = qualitySel.disabled = isRecording;
 
   clearInterval(timerInterval);
   if (isRecording && startTime) {
@@ -92,6 +94,10 @@ networkIn.addEventListener("change", () =>
   chrome.storage.local.set({ networkLog: networkIn.checked })
 );
 
+stepsIn.addEventListener("change", () =>
+  chrome.storage.local.set({ stepsLog: stepsIn.checked })
+);
+
 qualitySel.addEventListener("change", () =>
   chrome.storage.local.set({ quality: qualitySel.value })
 );
@@ -114,6 +120,13 @@ btnStop.addEventListener("click", async () => {
   // El popup queda abierto: se ve el cambio de estado y cualquier aviso.
 });
 
+btnMarker.addEventListener("click", async () => {
+  await chrome.runtime.sendMessage({ target: "background", type: "popup:marker" });
+  // Feedback breve sin cerrar el popup.
+  btnMarker.textContent = "💥 Marcado";
+  setTimeout(() => (btnMarker.textContent = "💥 Marcar bug aquí"), 900);
+});
+
 // ---------- Init ----------
 
 (async () => {
@@ -122,10 +135,12 @@ btnStop.addEventListener("click", async () => {
     quality: "medium",
     consoleLog: true,
     networkLog: true,
+    stepsLog: true,
   });
   micIn.checked = cfg.mic;
   consoleIn.checked = cfg.consoleLog;
   networkIn.checked = cfg.networkLog;
+  stepsIn.checked = cfg.stepsLog;
   qualitySel.value = cfg.quality;
   await refresh();
 })();

@@ -27,6 +27,7 @@ test("el popup arranca en idle con el modo QA activo por defecto", async ({ cont
   await expect(popup.locator("body")).toHaveAttribute("data-state", "idle");
   await expect(popup.locator("#consoleLog")).toBeChecked();
   await expect(popup.locator("#networkLog")).toBeChecked();
+  await expect(popup.locator("#stepsLog")).toBeChecked();
   await expect(popup.locator("#btnTab")).toBeVisible();
   await expect(popup.locator("#btnScreen")).toBeVisible();
 });
@@ -35,12 +36,10 @@ test("los interruptores del popup persisten en chrome.storage.local", async ({ c
   const popup = await context.newPage();
   await popup.goto(`chrome-extension://${extensionId}/popup.html`);
 
-  // El input real va en opacity:0 bajo el track del switch: el gesto del
-  // usuario es el clic sobre el label, igual que aquí.
-  const networkSwitch = popup.locator("label.switch:has(#networkLog)");
-
-  await networkSwitch.click();
-  await expect(popup.locator("#networkLog")).not.toBeChecked();
+  // El clic directo sobre el checkbox funciona gracias al
+  // pointer-events:none del track (fix de accesibilidad que destapó
+  // precisamente esta suite).
+  await popup.locator("#networkLog").uncheck();
   await expect
     .poll(async () => (await sw.evaluate(() => chrome.storage.local.get("networkLog"))).networkLog)
     .toBe(false);
@@ -50,8 +49,7 @@ test("los interruptores del popup persisten en chrome.storage.local", async ({ c
   await expect(popup.locator("#networkLog")).not.toBeChecked();
   await expect(popup.locator("#consoleLog")).toBeChecked();
 
-  await networkSwitch.click();
-  await expect(popup.locator("#networkLog")).toBeChecked();
+  await popup.locator("#networkLog").check();
   await expect
     .poll(async () => (await sw.evaluate(() => chrome.storage.local.get("networkLog"))).networkLog)
     .toBe(true);
@@ -69,6 +67,7 @@ test("el popup refleja en vivo el estado de grabación (storage.session)", async
   await expect(popup.locator("#timer")).toBeVisible();
   await expect(popup.locator("#consoleLog")).toBeDisabled();
   await expect(popup.locator("#btnStop")).toBeVisible();
+  await expect(popup.locator("#btnMarker")).toBeVisible();
 
   await sw.evaluate(() =>
     chrome.storage.session.set({ isRecording: false, startTime: null })
@@ -95,23 +94,30 @@ test("injectQaCapture instala los wrappers reales en el world MAIN de una págin
   }, SANDBOX);
 
   await sw.evaluate(
-    (tabId) => injectQaCapture(tabId, { consoleCapture: true, networkCapture: true }),
+    (tabId) =>
+      injectQaCapture(tabId, { consoleCapture: true, networkCapture: true, stepsCapture: true }),
     tabId
   );
 
   await expect.poll(() => page.evaluate(() => window.__qaRecorderMainInstalled)).toBe(true);
   await expect.poll(() => page.evaluate(() => window.__qaRecorderNetInstalled)).toBe(true);
 
-  // Los wrappers funcionan de verdad: console y fetch publican entradas.
+  // Los wrappers funcionan de verdad: console, fetch y un click real
+  // publican entradas (steps-capture.js corre en el mundo aislado, así que
+  // su flag no es visible desde page.evaluate: se comprueba por conducta).
   await page.evaluate(() => {
     console.log("hola desde la página");
     return fetch("/api/error").then(() => {});
   });
+  await page.click("#btnDemo");
   await page.waitForFunction(() =>
     window.__caught.some((e) => e.kind === "console" && e.text === "hola desde la página")
   );
   await page.waitForFunction(() =>
     window.__caught.some((e) => e.kind === "net" && e.net && e.net.status === 500)
+  );
+  await page.waitForFunction(() =>
+    window.__caught.some((e) => e.kind === "step" && e.text.includes("<button#btnDemo"))
   );
 });
 
