@@ -5,9 +5,12 @@
   "scripts": {
     "test:e2e": "cypress run",
     "test:e2e:chrome": "cypress run --browser chrome",
-    "cypress:open": "cypress open"
+    "cypress:open": "cypress open",
+    "test:ext": "playwright test",
+    "test:all": "cypress run && playwright test"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "cypress": "^15.18.1"
   }
 }

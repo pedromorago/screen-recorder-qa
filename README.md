@@ -60,23 +60,40 @@ El detalle técnico completo, pensado para que una sesión de Claude Code lo lea
 2. `chrome://extensions` → activa **Modo de desarrollador**
 3. **Cargar descomprimida** → selecciona la carpeta del repo
 
-## Tests E2E (Cypress)
+## Tests E2E (Cypress + Playwright)
 
 ```bash
 npm install
-npm run test:e2e          # headless (Electron)
-npm run test:e2e:chrome   # en Chrome, cargando además la extensión real
-npm run cypress:open      # modo interactivo
+npx playwright install chromium   # solo la primera vez
+
+npm run test:e2e          # Cypress headless (Electron)
+npm run test:e2e:chrome   # Cypress en Chrome, cargando además la extensión real
+npm run cypress:open      # Cypress interactivo
+npm run test:ext          # Playwright: la extensión real cargada en Chromium
+npm run test:all          # todo
 ```
 
-La suite cubre el motor del modo QA de punta a punta en un navegador real: los tests levantan un servidor local, cargan páginas de prueba e inyectan los **scripts reales de la extensión** (los mismos ficheros que inyecta `chrome.scripting.executeScript` en producción), y verifican el comportamiento observable:
+Dos herramientas, una capa cada una — elegir qué se testea con qué, y saber qué NO puede testear cada una, es parte de lo que este repo quiere demostrar:
+
+**Cypress cubre el motor de captura** (`cypress/e2e/`). Los tests levantan un servidor local, cargan páginas de prueba e inyectan los **scripts reales de la extensión** (los mismos ficheros que inyecta `chrome.scripting.executeScript` en producción) y verifican el comportamiento observable:
 
 - `console-capture.cy.js` — wrapper de consola: niveles y argumentos, excepciones, promesas rechazadas, recursos 404, objetos circulares, recorte de mensajes gigantes, guarda de doble inyección
 - `network-capture.cy.js` — wrapper de red: fetch 200/500, resolución de URLs relativas, fallos de red con status 0, XHR con headers de petición/respuesta, guarda de doble inyección
 - `bridge.cy.js` — puente del mundo aislado: entrada de navegación, agrupación en lotes, vaciado inmediato a las 50 entradas
 - `reports.cy.js` — generadores de informes del offscreen: formato de offsets, filtrado por interruptores, `.console.log`/`.console.json` y validez del HAR (pages por navegación, `pageref` por timestamp, queryString)
 
-**Dónde está el límite, y por qué**: Cypress no puede navegar a páginas `chrome-extension://` ni manejar el selector nativo de captura de Chrome, así que el flujo completo (popup → grabar → descargar el vídeo) no es automatizable con esta herramienta; queda cubierto por el checklist manual de [`CLAUDE.md`](./CLAUDE.md). Es una limitación de Cypress, no del diseño: con Playwright (que sí accede al service worker de una extensión MV3 cargada) ese tramo también sería automatizable, y está en el roadmap. Elegir qué capa se testea con qué herramienta —y saber qué NO puede testear la que usas— es exactamente el criterio que este repo quiere demostrar.
+Cypress no puede navegar a `chrome-extension://` ni hablar con el service worker, y ahí es donde entra la otra suite.
+
+**Playwright cubre la extensión real** (`playwright/`): contexto persistente con `--load-extension`, acceso directo al service worker MV3 y al popup como página `chrome-extension://`:
+
+- el service worker registra y el manifest expone los permisos del modo QA
+- el popup arranca en idle con el modo QA activo por defecto, y sus interruptores persisten en `chrome.storage.local`
+- el popup reacciona en vivo al estado de grabación (`storage.session` + `storage.onChanged`)
+- `injectQaCapture` inyecta los wrappers reales vía `chrome.scripting` en el world MAIN, y funcionan (console y fetch publican entradas)
+- si la pestaña grabada navega, `tabs.onUpdated` reinyecta los registros
+- `startTabRecording` sin gesto de usuario falla por el camino controlado: aviso en el popup y estado limpio
+
+**El único tramo no automatizado** es el corazón de la captura: `tabCapture`/`desktopCapture` exigen un gesto real del usuario sobre la extensión (clic en la barra de herramientas o selector nativo), que ningún framework puede fabricar. Ese tramo queda en el checklist manual de [`CLAUDE.md`](./CLAUDE.md) — y el test de Playwright verifica al menos que, sin ese gesto, el fallo es limpio y explicado.
 
 ## Roadmap
 
