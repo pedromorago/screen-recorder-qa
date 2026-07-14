@@ -68,6 +68,48 @@ async function sendTo(target, msg, attempts = 12) {
   );
 }
 
+// ---------- Registro de consola (modo QA, solo flujo de pestaña) ----------
+
+const injectableUrl = (url) => /^https?:/.test(url || "");
+
+// Dos scripts: el del mundo MAIN envuelve console.* (ahí no hay
+// chrome.runtime) y el puente del mundo aislado reenvía al offscreen.
+async function injectConsoleCapture(tabId) {
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    files: ["console-capture-main.js"],
+    world: "MAIN",
+    injectImmediately: true,
+  });
+  await chrome.scripting.executeScript({
+    target: { tabId },
+    files: ["console-capture-bridge.js"],
+    injectImmediately: true,
+  });
+}
+
+// Si la pestaña grabada navega, los content scripts desaparecen:
+// se reinyectan en cuanto empieza a cargar el documento nuevo.
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  if (changeInfo.status !== "loading") return;
+  const { isRecording, captureTarget, recordedTabId, consoleCapture } =
+    await chrome.storage.session.get({
+      isRecording: false,
+      captureTarget: null,
+      recordedTabId: null,
+      consoleCapture: false,
+    });
+  if (!isRecording || captureTarget !== "offscreen") return;
+  if (tabId !== recordedTabId || !consoleCapture) return;
+  if (!injectableUrl(tab.url)) return;
+  try {
+    await injectConsoleCapture(tabId);
+    log("registro de consola reinyectado tras navegar", tab.url);
+  } catch (e) {
+    log("no se pudo reinyectar el registro de consola:", e);
+  }
+});
+
 // ---------- Flujo 1: pestaña actual ----------
 
 async function startTabRecording() {
@@ -85,7 +127,12 @@ async function startTabRecording() {
       targetTabId: tab.id,
     });
 
-    const cfg = await chrome.storage.local.get({ mic: false, quality: "medium" });
+    const cfg = await chrome.storage.local.get({
+      mic: false,
+      quality: "medium",
+      consoleLog: true,
+    });
+    const consoleCapture = cfg.consoleLog && injectableUrl(tab.url);
     await ensureOffscreen();
     // El offscreen solo responde ok:true cuando getUserMedia y
     // MediaRecorder han arrancado de verdad. Sin carreras de estado.
@@ -95,12 +142,34 @@ async function startTabRecording() {
       systemAudio: true,
       mic: cfg.mic,
       quality: cfg.quality,
+      consoleCapture,
+      tabUrl: tab.url,
+      tabTitle: tab.title,
     });
     if (!res || !res.ok) {
       throw new Error((res && res.error) || "el offscreen no confirmó el inicio");
     }
     await setRecordingState(true, Date.now(), "offscreen");
+    await chrome.storage.session.set({ recordedTabId: tab.id, consoleCapture });
     log("grabación de pestaña iniciada");
+
+    if (consoleCapture) {
+      try {
+        await injectConsoleCapture(tab.id);
+        log("registro de consola activo en la pestaña", tab.id);
+      } catch (e) {
+        log("no se pudo inyectar el registro de consola:", e);
+        await setNotice(
+          "warn",
+          "Se graba el vídeo, pero no se pudo activar el registro de consola en esta página."
+        );
+      }
+    } else if (cfg.consoleLog) {
+      await setNotice(
+        "warn",
+        "El registro de consola solo funciona en páginas http(s); esta grabación irá sin él."
+      );
+    }
   } catch (e) {
     log("no se pudo iniciar la captura de pestaña:", e);
     await setNotice(
@@ -237,16 +306,31 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
     case "sw:complete":
       (async () => {
-        log("grabación completa (" + msg.from + "):", msg.filename, msg.bytes, "bytes");
-        const downloadId = await chrome.downloads.download({
-          url: msg.url,
-          filename: msg.filename,
-          saveAs: false,
-        });
+        // El offscreen manda files[] (vídeo + registros de consola);
+        // el recorder sigue mandando url/filename sueltos.
+        const files = msg.files || [{ url: msg.url, filename: msg.filename }];
+        log(
+          "grabación completa (" + msg.from + "):",
+          files.map((f) => f.filename).join(", "),
+          msg.bytes,
+          "bytes de vídeo"
+        );
+        const ids = [];
+        for (const f of files) {
+          ids.push(
+            await chrome.downloads.download({
+              url: f.url,
+              filename: f.filename,
+              saveAs: false,
+            })
+          );
+        }
         await chrome.storage.session.set({
-          pendingDownloadId: downloadId,
-          pendingDownloadUrl: msg.url,
-          pendingFrom: msg.from || "offscreen",
+          pendingDownloads: {
+            ids,
+            urls: files.map((f) => f.url),
+            from: msg.from || "offscreen",
+          },
         });
         await setRecordingState(false);
       })().catch((e) => {
@@ -271,37 +355,46 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   return false;
 });
 
-// Cuando la descarga termina: revocar el blob y cerrar el contexto de
-// captura para liberar la grabación de la memoria.
-chrome.downloads.onChanged.addListener(async (delta) => {
-  const { pendingDownloadId, pendingDownloadUrl, pendingFrom, isRecording } =
-    await chrome.storage.session.get({
-      pendingDownloadId: null,
-      pendingDownloadUrl: null,
-      pendingFrom: null,
-      isRecording: false,
-    });
-  if (!pendingDownloadId || delta.id !== pendingDownloadId) return;
+// Cuando TODAS las descargas de la grabación terminan: revocar los blobs y
+// cerrar el contexto de captura para liberar la grabación de la memoria.
+// Los eventos se procesan en serie para no pisar el estado compartido si
+// dos descargas (vídeo + logs) acaban casi a la vez.
+let downloadEventQueue = Promise.resolve();
+chrome.downloads.onChanged.addListener((delta) => {
+  downloadEventQueue = downloadEventQueue
+    .then(() => handleDownloadChanged(delta))
+    .catch((e) => log("error gestionando fin de descarga:", e));
+});
+
+async function handleDownloadChanged(delta) {
+  const { pendingDownloads, isRecording } = await chrome.storage.session.get({
+    pendingDownloads: null,
+    isRecording: false,
+  });
+  if (!pendingDownloads || !pendingDownloads.ids.includes(delta.id)) return;
   const state = delta.state && delta.state.current;
   if (state !== "complete" && state !== "interrupted") return;
 
-  log("descarga finalizada:", state);
-  await chrome.storage.session.set({
-    pendingDownloadId: null,
-    pendingDownloadUrl: null,
-    pendingFrom: null,
-  });
+  const remaining = pendingDownloads.ids.filter((id) => id !== delta.id);
+  log("descarga finalizada:", state, "· quedan", remaining.length);
+  if (remaining.length) {
+    await chrome.storage.session.set({
+      pendingDownloads: { ...pendingDownloads, ids: remaining },
+    });
+    return;
+  }
+  await chrome.storage.session.set({ pendingDownloads: null });
 
-  if (pendingFrom === "recorder") {
+  if (pendingDownloads.from === "recorder") {
     try {
-      await sendTo("recorder", { type: "rec:cleanup", url: pendingDownloadUrl }, 2);
+      await sendTo("recorder", { type: "rec:cleanup", urls: pendingDownloads.urls }, 2);
     } catch (e) {
       /* ya no existe */
     }
     await closeRecorderWindow();
   } else {
     try {
-      await sendTo("offscreen", { type: "off:cleanup", url: pendingDownloadUrl }, 2);
+      await sendTo("offscreen", { type: "off:cleanup", urls: pendingDownloads.urls }, 2);
     } catch (e) {
       /* ya no existe */
     }
@@ -315,7 +408,7 @@ chrome.downloads.onChanged.addListener(async (delta) => {
       }
     }
   }
-});
+}
 
 // Si el usuario cierra la ventana de grabación a mano.
 chrome.windows.onRemoved.addListener(async (windowId) => {

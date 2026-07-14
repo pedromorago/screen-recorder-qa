@@ -1,14 +1,32 @@
-# Grabador de pantalla
+# Grabador de pantalla · modo QA
 
-Extensión de Chrome (Manifest V3) para grabar pantalla, ventana o pestaña. Sin límites de tiempo, sin marca de agua, sin cuenta.
+Extensión de Chrome (Manifest V3) para grabar pantalla, ventana o pestaña, pensada para reportar bugs: además del vídeo, registra la consola y los errores JS de la página, sincronizados con la grabación. Sin límites de tiempo, sin marca de agua, sin cuenta.
 
 ## Qué hace
 
 - Graba la pestaña actual con un clic, audio incluido automáticamente
+- **Modo QA**: al grabar una pestaña, captura `console.log/warn/error`, excepciones no controladas, promesas rechazadas y recursos que no cargan (404 de imágenes/scripts), cada entrada con su offset `+mm:ss.mmm` respecto al vídeo — "el error saltó en el segundo 12" deja de ser una frase y pasa a ser una línea de log
+- Junto al `.webm` descarga `*.console.log` (legible, listo para pegar en un ticket) y `*.console.json` (estructurado, con metadatos de página y navegador)
+- Sobrevive a navegaciones: si la pestaña cambia de página a mitad de grabación, el registro continúa y anota la URL nueva en la línea de tiempo
 - Graba pantalla completa o una ventana, con el selector nativo de Chrome
 - Micrófono opcional, mezclado con el audio capturado
 - Tres niveles de calidad (bitrate/fps)
 - Exporta a `.webm`; conversión a MP4 documentada más abajo
+
+Ejemplo de `*.console.log`:
+
+```
+# Registro de consola — Grabador de pantalla (modo QA)
+# Página: Checkout — https://tienda.example/checkout
+# Inicio del vídeo: 2026-07-14T11:02:41.000Z
+# 4 entradas
+
+[+00:00.000] NAV   https://tienda.example/checkout
+[+00:07.412] WARN  stock bajo para SKU-1042
+[+00:12.083] ERROR TypeError: Cannot read properties of undefined (reading 'total')
+    en https://tienda.example/js/cart.js:88:17
+[+00:12.090] ERROR Recurso no cargado: <img> https://cdn.example/promo.png
+```
 
 ## Por qué existe
 
@@ -27,6 +45,9 @@ Un `streamId` de `chrome.tabCapture` solo es válido con `chromeMediaSource: "ta
 **3. Chrome silencia la pestaña que capturas.**
 Sin corregirlo, grabas vídeo con audio pero dejas de oír la pestaña mientras grabas. La solución reinyecta el audio capturado a los altavoces vía `AudioContext`, solo en el flujo de pestaña (en pantalla completa duplicaría el sonido del sistema).
 
+**4. Para envolver `console.*` hay que vivir en el mundo de la página, donde la extensión no existe.**
+Un content script normal corre en un mundo aislado: ve el mismo DOM pero OTRO objeto `console`, así que envolverlo ahí no captura nada de lo que hace la página. La captura real exige inyectar en el `world: "MAIN"`, donde a cambio no hay `chrome.runtime` para hablar con la extensión. De ahí la pareja de scripts: el del mundo principal envuelve `console.*` y publica cada entrada con `postMessage`; un puente en el mundo aislado las agrupa y reenvía. Y las acumula el documento offscreen, no el service worker, porque el service worker puede morir a mitad de grabación y llevarse el registro consigo. Tercera trampa del mismo pozo: al navegar la pestaña, los scripts inyectados desaparecen — `tabs.onUpdated` los reinyecta en cuanto el documento nuevo empieza a cargar.
+
 El detalle técnico completo, pensado para que una sesión de Claude Code lo lea antes de tocar código, está en [`CLAUDE.md`](./CLAUDE.md).
 
 ## Instalar
@@ -37,7 +58,15 @@ El detalle técnico completo, pensado para que una sesión de Claude Code lo lea
 
 ## Roadmap
 
-La versión actual es un grabador genérico. La siguiente iteración, con más valor real, es un grabador orientado a reportes de bugs de QA: adjuntar automáticamente logs de consola, peticiones de red fallidas y metadatos del navegador a cada grabación, con exportación directa a Jira o Linear.
+La dirección es un grabador orientado a reportes de bugs de QA. Hecho y pendiente:
+
+- [x] Registro de consola y errores JS sincronizado con el vídeo
+- [ ] Peticiones de red (`fetch`/XHR con status y duración, resaltando 4xx/5xx), exportadas en HAR
+- [ ] Pasos para reproducir generados automáticamente (clicks y navegaciones con timestamp)
+- [ ] Informe empaquetado: vídeo + logs + red + pasos + metadatos del entorno, listo para pegar en Jira o Linear
+- [ ] Marcadores durante la grabación («aquí está el bug») con atajo de teclado
+
+El registro de consola solo aplica al flujo de pestaña (una grabación de pantalla completa no tiene una pestaña asociada de la que leer) y a páginas `http(s)`.
 
 ## Licencia
 

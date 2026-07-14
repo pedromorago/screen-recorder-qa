@@ -37,11 +37,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   if (msg.type === "rec:cleanup") {
-    if (msg.url) {
-      URL.revokeObjectURL(msg.url);
-      if (msg.url === blobUrl) blobUrl = null;
-      log("blob revocado tras la descarga");
+    const urls = msg.urls || (msg.url ? [msg.url] : []);
+    for (const url of urls) {
+      URL.revokeObjectURL(url);
+      if (url === blobUrl) blobUrl = null;
     }
+    if (urls.length) log("blob revocado tras la descarga");
     sendResponse({ ok: true });
     return false;
   }

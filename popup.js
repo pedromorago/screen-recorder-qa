@@ -1,6 +1,7 @@
 "use strict";
 
 const micIn = document.getElementById("mic");
+const consoleIn = document.getElementById("consoleLog");
 const qualitySel = document.getElementById("quality");
 const btnTab = document.getElementById("btnTab");
 const btnScreen = document.getElementById("btnScreen");
@@ -21,7 +22,7 @@ function fmt(ms) {
 
 function render({ isRecording, startTime, notice }) {
   document.body.dataset.state = isRecording ? "recording" : "idle";
-  micIn.disabled = qualitySel.disabled = isRecording;
+  micIn.disabled = consoleIn.disabled = qualitySel.disabled = isRecording;
 
   clearInterval(timerInterval);
   if (isRecording && startTime) {
@@ -82,6 +83,10 @@ micIn.addEventListener("change", async () => {
   chrome.tabs.create({ url: chrome.runtime.getURL("permission.html") });
 });
 
+consoleIn.addEventListener("change", () =>
+  chrome.storage.local.set({ consoleLog: consoleIn.checked })
+);
+
 qualitySel.addEventListener("change", () =>
   chrome.storage.local.set({ quality: qualitySel.value })
 );
@@ -107,8 +112,13 @@ btnStop.addEventListener("click", async () => {
 // ---------- Init ----------
 
 (async () => {
-  const cfg = await chrome.storage.local.get({ mic: false, quality: "medium" });
+  const cfg = await chrome.storage.local.get({
+    mic: false,
+    quality: "medium",
+    consoleLog: true,
+  });
   micIn.checked = cfg.mic;
+  consoleIn.checked = cfg.consoleLog;
   qualitySel.value = cfg.quality;
   await refresh();
 })();
