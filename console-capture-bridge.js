@@ -1,10 +1,11 @@
 "use strict";
 
 // Se inyecta en el mundo AISLADO de la pestaña grabada, junto con
-// console-capture-main.js (mundo principal). Recoge las entradas que aquel
-// publica con postMessage, las agrupa en lotes y las envía al documento
-// offscreen, que es quien las acumula (el service worker puede morir a
-// mitad de grabación; el offscreen vive mientras se graba).
+// console-capture-main.js y/o network-capture-main.js (mundo principal).
+// Recoge las entradas que aquellos publican con postMessage, las agrupa en
+// lotes y las envía al documento offscreen, que es quien las acumula (el
+// service worker puede morir a mitad de grabación; el offscreen vive
+// mientras se graba).
 
 (() => {
   if (window.__qaRecorderBridgeInstalled) return;

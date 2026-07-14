@@ -13,14 +13,25 @@ let micStream = null;
 let audioCtx = null;
 let blobUrls = [];
 
-// Registro de consola (modo QA). Se acumula aquí y no en el service worker
+// Registros QA (consola y red). Se acumulan aquí y no en el service worker
 // porque este documento vive toda la grabación y el SW puede morir.
-const MAX_CONSOLE_ENTRIES = 10_000;
+const MAX_QA_ENTRIES = 10_000;
 let consoleEnabled = false;
-let consoleMeta = null; // { url, title }
-let consoleEntries = [];
-let consoleDropped = 0;
+let networkEnabled = false;
+let qaMeta = null; // { url, title }
+let qaEntries = []; // console/exception/rejection/resource/nav/net, orden de llegada
+let qaDropped = 0;
 let videoStartTime = null;
+
+// Los wrappers quedan instalados en la página entre grabaciones (ver
+// CLAUDE.md), así que puede llegar de todo: se filtra por tipo según los
+// interruptores de ESTA grabación.
+function acceptsEntry(e) {
+  if (!e || typeof e !== "object") return false;
+  if (e.kind === "net") return networkEnabled;
+  if (e.kind === "nav") return consoleEnabled || networkEnabled;
+  return consoleEnabled;
+}
 
 function toBackground(type, extra) {
   chrome.runtime.sendMessage({ target: "background", type, ...extra });
@@ -61,13 +72,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   // Lotes de entradas desde console-capture-bridge.js (pestaña grabada).
   if (msg.type === "off:consoleEntries") {
-    if (consoleEnabled && recorder && Array.isArray(msg.entries)) {
-      const room = MAX_CONSOLE_ENTRIES - consoleEntries.length;
-      if (room >= msg.entries.length) {
-        consoleEntries.push(...msg.entries);
-      } else {
-        if (room > 0) consoleEntries.push(...msg.entries.slice(0, room));
-        consoleDropped += msg.entries.length - Math.max(room, 0);
+    if (recorder && Array.isArray(msg.entries)) {
+      for (const e of msg.entries) {
+        if (!acceptsEntry(e)) continue;
+        if (qaEntries.length >= MAX_QA_ENTRIES) {
+          qaDropped++;
+          continue;
+        }
+        qaEntries.push(e);
       }
     }
     sendResponse({ ok: true });
@@ -79,14 +91,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
 // ---------- Captura de pestaña ----------
 
-async function start({ streamId, systemAudio, mic, quality, consoleCapture, tabUrl, tabTitle }) {
+async function start({ streamId, systemAudio, mic, quality, consoleCapture, networkCapture, tabUrl, tabTitle }) {
   const q = QUALITY[quality] || QUALITY.medium;
-  log("start", { systemAudio, mic, quality, consoleCapture });
+  log("start", { systemAudio, mic, quality, consoleCapture, networkCapture });
 
   consoleEnabled = !!consoleCapture;
-  consoleMeta = { url: tabUrl || "", title: tabTitle || "" };
-  consoleEntries = [];
-  consoleDropped = 0;
+  networkEnabled = !!networkCapture;
+  qaMeta = { url: tabUrl || "", title: tabTitle || "" };
+  qaEntries = [];
+  qaDropped = 0;
 
   // streamId de tabCapture: se consume como chromeMediaSource "tab".
   displayStream = await navigator.mediaDevices.getUserMedia({
@@ -181,17 +194,28 @@ function finalize() {
   const base = `grabaciones-pantalla/grabacion-${stamp()}`;
   const files = [{ url: track(blob), filename: `${base}.webm`, bytes: blob.size }];
 
+  // El puente puede haber enviado lotes desordenados: orden estable por t.
+  qaEntries.sort((a, b) => a.t - b.t);
+
   if (consoleEnabled) {
     const { text, json } = buildConsoleReport();
     files.push(
       { url: track(new Blob([text], { type: "text/plain" })), filename: `${base}.console.log` },
       { url: track(new Blob([json], { type: "application/json" })), filename: `${base}.console.json` }
     );
-    log("registro de consola:", consoleEntries.length, "entradas");
+  }
+  if (networkEnabled) {
+    files.push({
+      url: track(new Blob([buildHar()], { type: "application/json" })),
+      filename: `${base}.har`,
+    });
+  }
+  if (consoleEnabled || networkEnabled) {
+    log("registros QA:", qaEntries.length, "entradas");
   }
 
   toBackground("sw:complete", { from: "offscreen", files, bytes: blob.size });
-  consoleEnabled = false;
+  consoleEnabled = networkEnabled = false;
   cleanupStreams();
 }
 
@@ -201,7 +225,7 @@ function track(blob) {
   return url;
 }
 
-// ---------- Registro de consola: ficheros de salida ----------
+// ---------- Registros QA: ficheros de salida ----------
 
 // Offset respecto al inicio del vídeo, como "+mm:ss.mmm".
 function offset(t) {
@@ -211,40 +235,48 @@ function offset(t) {
   return `+${pad(m)}:${pad(s)}.${String(ms % 1000).padStart(3, "0")}`;
 }
 
+const isNetFailure = (e) =>
+  e.kind === "net" && !!(e.net && (e.net.error || e.net.status >= 400));
+
+// .console.log (texto) y .console.json. En el texto, la red aparece solo
+// cuando falla: la línea de tiempo del bug sin el ruido de la red sana,
+// que ya está completa en el .har.
 function buildConsoleReport() {
   const startedAt = new Date(videoStartTime || Date.now()).toISOString();
+  const textEntries = qaEntries.filter((e) => e.kind !== "net" || isNetFailure(e));
+  const jsonEntries = qaEntries.filter((e) => e.kind !== "net");
+
   const header =
     "# Registro de consola — Grabador de pantalla (modo QA)\n" +
-    `# Página: ${consoleMeta.title || "(sin título)"} — ${consoleMeta.url}\n` +
+    `# Página: ${qaMeta.title || "(sin título)"} — ${qaMeta.url}\n` +
     `# Inicio del vídeo: ${startedAt}\n` +
     `# Navegador: ${navigator.userAgent}\n` +
-    `# ${consoleEntries.length} entradas` +
-    (consoleDropped ? ` (${consoleDropped} descartadas por límite)` : "") +
+    `# ${textEntries.length} entradas` +
+    (qaDropped ? ` (${qaDropped} descartadas por límite)` : "") +
+    (networkEnabled ? " · red completa en el .har adjunto" : "") +
     "\n\n";
+
+  const label = (e) =>
+    e.kind === "nav" ? "NAV" : e.kind === "net" ? "NET" : (e.level || "log").toUpperCase();
 
   const text =
     header +
-    (consoleEntries.length
-      ? consoleEntries
-          .map((e) => {
-            const label = e.kind === "nav" ? "NAV" : (e.level || "log").toUpperCase();
-            return `[${offset(e.t)}] ${label.padEnd(5)} ${e.text}`;
-          })
-          .join("\n") + "\n"
+    (textEntries.length
+      ? textEntries.map((e) => `[${offset(e.t)}] ${label(e).padEnd(5)} ${e.text}`).join("\n") + "\n"
       : "(sin entradas de consola durante la grabación)\n");
 
   const json = JSON.stringify(
     {
       meta: {
-        url: consoleMeta.url,
-        title: consoleMeta.title,
+        url: qaMeta.url,
+        title: qaMeta.title,
         videoStart: startedAt,
         userAgent: navigator.userAgent,
-        entries: consoleEntries.length,
-        dropped: consoleDropped,
+        entries: jsonEntries.length,
+        dropped: qaDropped,
       },
       // offsetMs: milisegundos desde el inicio del vídeo.
-      entries: consoleEntries.map((e) => ({
+      entries: jsonEntries.map((e) => ({
         offsetMs: Math.max(0, e.t - (videoStartTime || e.t)),
         offset: offset(e.t),
         kind: e.kind,
@@ -257,6 +289,90 @@ function buildConsoleReport() {
   );
 
   return { text, json };
+}
+
+// HAR 1.2 con todas las peticiones fetch/XHR. Las navegaciones de la
+// grabación se convierten en "pages", y cada petición se cuelga de la
+// página vigente cuando arrancó.
+function buildHar() {
+  const navs = qaEntries.filter((e) => e.kind === "nav");
+  const nets = qaEntries.filter((e) => e.kind === "net");
+
+  const pageMarks = navs.length
+    ? navs.map((n) => ({ t: n.t, title: n.text }))
+    : [{ t: videoStartTime || Date.now(), title: qaMeta.url || "(desconocida)" }];
+
+  const pages = pageMarks.map((p, i) => ({
+    startedDateTime: new Date(p.t).toISOString(),
+    id: "page_" + (i + 1),
+    title: p.title,
+    pageTimings: { onContentLoad: -1, onLoad: -1 },
+  }));
+
+  const pageref = (t) => {
+    let idx = 0;
+    for (let i = 0; i < pageMarks.length; i++) if (pageMarks[i].t <= t) idx = i;
+    return "page_" + (idx + 1);
+  };
+
+  const entries = nets.map((e) => {
+    const n = e.net || {};
+    let queryString = [];
+    try {
+      queryString = [...new URL(n.url).searchParams].map(([name, value]) => ({ name, value }));
+    } catch (err) {
+      /* URL truncada o inválida */
+    }
+    return {
+      pageref: pageref(e.t),
+      startedDateTime: new Date(e.t).toISOString(),
+      time: n.durationMs || 0,
+      request: {
+        method: n.method || "GET",
+        url: n.url || "",
+        httpVersion: "",
+        cookies: [],
+        headers: n.requestHeaders || [],
+        queryString,
+        headersSize: -1,
+        bodySize: -1,
+      },
+      response: {
+        status: n.status || 0,
+        statusText: n.statusText || "",
+        httpVersion: "",
+        cookies: [],
+        headers: n.responseHeaders || [],
+        content: {
+          size: typeof n.contentLength === "number" ? n.contentLength : -1,
+          mimeType: n.contentType || "x-unknown",
+        },
+        redirectURL: "",
+        headersSize: -1,
+        bodySize: -1,
+      },
+      cache: {},
+      timings: { blocked: -1, dns: -1, connect: -1, ssl: -1, send: 0, wait: n.durationMs || 0, receive: 0 },
+      comment:
+        (n.initiator || "") + (n.error ? " · fallo: " + n.error : ""),
+    };
+  });
+
+  return JSON.stringify(
+    {
+      log: {
+        version: "1.2",
+        creator: {
+          name: "Grabador de pantalla (modo QA)",
+          version: chrome.runtime.getManifest().version,
+        },
+        pages,
+        entries,
+      },
+    },
+    null,
+    2
+  );
 }
 
 function cleanupStreams() {

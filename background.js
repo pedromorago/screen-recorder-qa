@@ -68,19 +68,29 @@ async function sendTo(target, msg, attempts = 12) {
   );
 }
 
-// ---------- Registro de consola (modo QA, solo flujo de pestaña) ----------
+// ---------- Registros QA: consola y red (solo flujo de pestaña) ----------
 
 const injectableUrl = (url) => /^https?:/.test(url || "");
 
-// Dos scripts: el del mundo MAIN envuelve console.* (ahí no hay
-// chrome.runtime) y el puente del mundo aislado reenvía al offscreen.
-async function injectConsoleCapture(tabId) {
-  await chrome.scripting.executeScript({
-    target: { tabId },
-    files: ["console-capture-main.js"],
-    world: "MAIN",
-    injectImmediately: true,
-  });
+// Wrappers en el mundo MAIN (ahí no hay chrome.runtime) + un puente en el
+// mundo aislado que reenvía todo al offscreen.
+async function injectQaCapture(tabId, { consoleCapture, networkCapture }) {
+  if (consoleCapture) {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ["console-capture-main.js"],
+      world: "MAIN",
+      injectImmediately: true,
+    });
+  }
+  if (networkCapture) {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ["network-capture-main.js"],
+      world: "MAIN",
+      injectImmediately: true,
+    });
+  }
   await chrome.scripting.executeScript({
     target: { tabId },
     files: ["console-capture-bridge.js"],
@@ -92,21 +102,22 @@ async function injectConsoleCapture(tabId) {
 // se reinyectan en cuanto empieza a cargar el documento nuevo.
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   if (changeInfo.status !== "loading") return;
-  const { isRecording, captureTarget, recordedTabId, consoleCapture } =
+  const { isRecording, captureTarget, recordedTabId, consoleCapture, networkCapture } =
     await chrome.storage.session.get({
       isRecording: false,
       captureTarget: null,
       recordedTabId: null,
       consoleCapture: false,
+      networkCapture: false,
     });
   if (!isRecording || captureTarget !== "offscreen") return;
-  if (tabId !== recordedTabId || !consoleCapture) return;
+  if (tabId !== recordedTabId || (!consoleCapture && !networkCapture)) return;
   if (!injectableUrl(tab.url)) return;
   try {
-    await injectConsoleCapture(tabId);
-    log("registro de consola reinyectado tras navegar", tab.url);
+    await injectQaCapture(tabId, { consoleCapture, networkCapture });
+    log("registros QA reinyectados tras navegar", tab.url);
   } catch (e) {
-    log("no se pudo reinyectar el registro de consola:", e);
+    log("no se pudieron reinyectar los registros QA:", e);
   }
 });
 
@@ -131,8 +142,11 @@ async function startTabRecording() {
       mic: false,
       quality: "medium",
       consoleLog: true,
+      networkLog: true,
     });
-    const consoleCapture = cfg.consoleLog && injectableUrl(tab.url);
+    const injectable = injectableUrl(tab.url);
+    const consoleCapture = cfg.consoleLog && injectable;
+    const networkCapture = cfg.networkLog && injectable;
     await ensureOffscreen();
     // El offscreen solo responde ok:true cuando getUserMedia y
     // MediaRecorder han arrancado de verdad. Sin carreras de estado.
@@ -143,6 +157,7 @@ async function startTabRecording() {
       mic: cfg.mic,
       quality: cfg.quality,
       consoleCapture,
+      networkCapture,
       tabUrl: tab.url,
       tabTitle: tab.title,
     });
@@ -150,24 +165,24 @@ async function startTabRecording() {
       throw new Error((res && res.error) || "el offscreen no confirmó el inicio");
     }
     await setRecordingState(true, Date.now(), "offscreen");
-    await chrome.storage.session.set({ recordedTabId: tab.id, consoleCapture });
+    await chrome.storage.session.set({ recordedTabId: tab.id, consoleCapture, networkCapture });
     log("grabación de pestaña iniciada");
 
-    if (consoleCapture) {
+    if (consoleCapture || networkCapture) {
       try {
-        await injectConsoleCapture(tab.id);
-        log("registro de consola activo en la pestaña", tab.id);
+        await injectQaCapture(tab.id, { consoleCapture, networkCapture });
+        log("registros QA activos en la pestaña", tab.id, { consoleCapture, networkCapture });
       } catch (e) {
-        log("no se pudo inyectar el registro de consola:", e);
+        log("no se pudieron inyectar los registros QA:", e);
         await setNotice(
           "warn",
-          "Se graba el vídeo, pero no se pudo activar el registro de consola en esta página."
+          "Se graba el vídeo, pero no se pudieron activar los registros de consola/red en esta página."
         );
       }
-    } else if (cfg.consoleLog) {
+    } else if (cfg.consoleLog || cfg.networkLog) {
       await setNotice(
         "warn",
-        "El registro de consola solo funciona en páginas http(s); esta grabación irá sin él."
+        "Los registros de consola y red solo funcionan en páginas http(s); esta grabación irá sin ellos."
       );
     }
   } catch (e) {

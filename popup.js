@@ -2,6 +2,7 @@
 
 const micIn = document.getElementById("mic");
 const consoleIn = document.getElementById("consoleLog");
+const networkIn = document.getElementById("networkLog");
 const qualitySel = document.getElementById("quality");
 const btnTab = document.getElementById("btnTab");
 const btnScreen = document.getElementById("btnScreen");
@@ -22,7 +23,7 @@ function fmt(ms) {
 
 function render({ isRecording, startTime, notice }) {
   document.body.dataset.state = isRecording ? "recording" : "idle";
-  micIn.disabled = consoleIn.disabled = qualitySel.disabled = isRecording;
+  micIn.disabled = consoleIn.disabled = networkIn.disabled = qualitySel.disabled = isRecording;
 
   clearInterval(timerInterval);
   if (isRecording && startTime) {
@@ -87,6 +88,10 @@ consoleIn.addEventListener("change", () =>
   chrome.storage.local.set({ consoleLog: consoleIn.checked })
 );
 
+networkIn.addEventListener("change", () =>
+  chrome.storage.local.set({ networkLog: networkIn.checked })
+);
+
 qualitySel.addEventListener("change", () =>
   chrome.storage.local.set({ quality: qualitySel.value })
 );
@@ -116,9 +121,11 @@ btnStop.addEventListener("click", async () => {
     mic: false,
     quality: "medium",
     consoleLog: true,
+    networkLog: true,
   });
   micIn.checked = cfg.mic;
   consoleIn.checked = cfg.consoleLog;
+  networkIn.checked = cfg.networkLog;
   qualitySel.value = cfg.quality;
   await refresh();
 })();

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Grabador de pantalla",
-  "version": "1.5.0",
-  "description": "Graba tu pantalla, una ventana o una pestaña con un clic. Modo QA: registro de consola y errores JS sincronizado con el vídeo.",
+  "version": "1.6.0",
+  "description": "Graba tu pantalla, una ventana o una pestaña con un clic. Modo QA: consola, errores JS y red (HAR) sincronizados con el vídeo.",
   "permissions": [
     "desktopCapture",
     "tabCapture",
