@@ -57,6 +57,11 @@ describe("console-capture-main.js (world MAIN)", () => {
     );
   });
 
+  it("serializa symbols y bigints sin lanzar", () => {
+    cy.window().then((win) => win.eval("console.log(Symbol('marca'), 10n)"));
+    cy.waitForEntry((e) => e.kind === "console" && e.text === "Symbol(marca) 10n");
+  });
+
   it("recorta mensajes gigantes a un tamaño acotado", () => {
     cy.window().then((win) => win.eval("console.log('x'.repeat(5000))"));
     cy.waitForEntry(

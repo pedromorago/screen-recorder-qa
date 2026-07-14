@@ -208,8 +208,10 @@ function finalize() {
   const type = (recorder && recorder.mimeType) || "video/webm";
   const blob = new Blob(chunks, { type });
   chunks = [];
-  blobUrls.forEach((u) => URL.revokeObjectURL(u));
-  blobUrls = [];
+  // OJO: aquí NO se revocan los blobs anteriores. Si el usuario encadena
+  // grabaciones, las descargas de la anterior pueden seguir en vuelo y
+  // revocar su URL las interrumpe. Cada grupo se revoca en off:cleanup
+  // cuando el background confirma que TODAS sus descargas terminaron.
 
   const name = `grabacion-${stamp()}`;
   const base = `grabaciones-pantalla/${name}`;

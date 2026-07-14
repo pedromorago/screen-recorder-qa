@@ -75,6 +75,29 @@ describe("network-capture-main.js (world MAIN)", () => {
     });
   });
 
+  it("un XHR reutilizado (open/send dos veces) no duplica entradas", () => {
+    cy.window().then((win) =>
+      win.eval(`
+        window.__xhrReuse = new XMLHttpRequest();
+        __xhrReuse.open("GET", "/api/ok?ronda=1");
+        __xhrReuse.send();
+      `)
+    );
+    cy.waitForEntry((e) => e.kind === "net" && e.net && e.net.url.includes("ronda=1"));
+    cy.window().then((win) =>
+      win.eval(`
+        __xhrReuse.open("GET", "/api/ok?ronda=2");
+        __xhrReuse.send();
+      `)
+    );
+    cy.waitForEntry((e) => e.kind === "net" && e.net && e.net.url.includes("ronda=2"));
+    cy.window().should((win) => {
+      const nets = win.__entries.filter((e) => e.kind === "net");
+      expect(nets.filter((e) => e.net.url.includes("ronda=1")), "primera petición").to.have.length(1);
+      expect(nets.filter((e) => e.net.url.includes("ronda=2")), "segunda petición").to.have.length(1);
+    });
+  });
+
   it("la doble inyección no duplica peticiones (guarda de instalación)", () => {
     cy.injectExtensionScript("network-capture-main.js"); // segunda inyección
     cy.window().then((win) => win.eval("fetch('/api/ok?unica=1')"));

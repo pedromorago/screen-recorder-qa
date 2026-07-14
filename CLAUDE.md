@@ -69,8 +69,12 @@ vídeo. JS plano, sin build: se carga descomprimida en Chrome.
    (`acceptsEntry`), porque un wrapper instalado en una grabación anterior
    sigue emitiendo aunque su interruptor esté ahora apagado.
 8. `sw:complete` lleva `files[]` (vídeo + logs). El background lanza todas
-   las descargas y solo limpia blobs/contextos cuando TODAS terminan
-   (`pendingDownloads` en storage.session, eventos en serie).
+   las descargas y las contabiliza por GRUPOS (`pendingDownloads.groups`
+   en storage.session, eventos en serie): si el usuario encadena
+   grabaciones, las descargas de la anterior pueden seguir en vuelo, así
+   que cada grupo revoca sus blobs por separado (`off:cleanup`) y el
+   offscreen NO revoca nada al finalizar ni se cierra mientras queden
+   grupos suyos pendientes.
 
 ## Probar
 

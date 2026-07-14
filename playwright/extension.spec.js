@@ -149,6 +149,45 @@ test("si la pestaña grabada navega, tabs.onUpdated reinyecta los registros", as
   await sw.evaluate(() => chrome.storage.session.set({ isRecording: false, recordedTabId: null }));
 });
 
+test("las descargas se contabilizan por grupos: grabaciones encadenadas no se pisan", async ({ sw }) => {
+  // Dos grabaciones con descargas en vuelo a la vez (la 2ª terminó antes
+  // de que acabaran las descargas de la 1ª). handleDownloadChanged debe
+  // limpiar cada grupo por separado y no tocar el ajeno.
+  await sw.evaluate(() =>
+    chrome.storage.session.set({
+      isRecording: false,
+      pendingDownloads: {
+        groups: [
+          { ids: [101, 102], urls: ["blob:a", "blob:b"], from: "offscreen" },
+          { ids: [201], urls: ["blob:c"], from: "offscreen" },
+        ],
+      },
+    })
+  );
+
+  await sw.evaluate(() => handleDownloadChanged({ id: 101, state: { current: "complete" } }));
+  let s = await sw.evaluate(() => chrome.storage.session.get("pendingDownloads"));
+  expect(s.pendingDownloads.groups).toEqual([
+    { ids: [102], urls: ["blob:a", "blob:b"], from: "offscreen" },
+    { ids: [201], urls: ["blob:c"], from: "offscreen" },
+  ]);
+
+  // Un id que no es de ninguna descarga nuestra no toca nada.
+  await sw.evaluate(() => handleDownloadChanged({ id: 999, state: { current: "complete" } }));
+  s = await sw.evaluate(() => chrome.storage.session.get("pendingDownloads"));
+  expect(s.pendingDownloads.groups).toHaveLength(2);
+
+  // Termina el primer grupo entero: desaparece; el segundo queda intacto.
+  await sw.evaluate(() => handleDownloadChanged({ id: 102, state: { current: "interrupted" } }));
+  s = await sw.evaluate(() => chrome.storage.session.get("pendingDownloads"));
+  expect(s.pendingDownloads.groups).toEqual([{ ids: [201], urls: ["blob:c"], from: "offscreen" }]);
+
+  // Y al terminar el último grupo, no queda contabilidad pendiente.
+  await sw.evaluate(() => handleDownloadChanged({ id: 201, state: { current: "complete" } }));
+  s = await sw.evaluate(() => chrome.storage.session.get("pendingDownloads"));
+  expect(s.pendingDownloads).toBeNull();
+});
+
 test("startTabRecording sin gesto de usuario falla con aviso y sin quedarse grabando", async ({ context, sw }) => {
   const page = await context.newPage();
   await page.goto(SANDBOX);

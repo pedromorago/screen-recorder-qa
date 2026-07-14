@@ -42,6 +42,11 @@ describe("steps-capture.js (mundo aislado)", () => {
     });
   });
 
+  it("un click en texto plano no desborda la etiqueta del paso", () => {
+    cy.get("p").first().click();
+    cy.waitForEntry((e) => e.kind === "step" && e.text.includes("<p") && e.text.length < 150);
+  });
+
   it("registra el envío de un formulario", () => {
     cy.get("#formDemo").then(($f) => $f.on("submit", (e) => e.preventDefault()));
     cy.get("#btnEnviar").click();

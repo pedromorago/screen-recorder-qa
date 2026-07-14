@@ -188,6 +188,8 @@
       const info = this.__qaNet;
       if (info) {
         const t0 = Date.now();
+        // once: un XHR reutilizado (open/send repetidos) añadiría un
+        // listener por send y duplicaría entradas con tiempos falsos.
         this.addEventListener("loadend", () => {
           let responseHeaders = [];
           let contentType = "";
@@ -213,7 +215,7 @@
             contentLength,
             error: this.status === 0 ? "sin respuesta (red, CORS o abort)" : "",
           });
-        });
+        }, { once: true });
       }
       return origSend.apply(this, arguments);
     };

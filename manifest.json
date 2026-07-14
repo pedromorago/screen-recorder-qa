@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Grabador de pantalla",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "description": "Graba tu pantalla, ventana o pestaña. Modo QA: consola, red (HAR), pasos e informe de bug sincronizados con el vídeo.",
   "permissions": [
     "desktopCapture",

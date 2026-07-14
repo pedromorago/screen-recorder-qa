@@ -370,22 +370,42 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           "bytes de vídeo"
         );
         const ids = [];
+        const urls = [];
+        let fallidas = 0;
         for (const f of files) {
-          ids.push(
-            await chrome.downloads.download({
+          try {
+            const id = await chrome.downloads.download({
               url: f.url,
               filename: f.filename,
               saveAs: false,
-            })
-          );
+            });
+            ids.push(id);
+            urls.push(f.url);
+          } catch (e) {
+            fallidas++;
+            log("no se pudo descargar", f.filename, e);
+          }
         }
-        await chrome.storage.session.set({
-          pendingDownloads: {
-            ids,
-            urls: files.map((f) => f.url),
-            from: msg.from || "offscreen",
-          },
-        });
+        if (ids.length) {
+          // GRUPOS de descargas: si el usuario encadena grabaciones, las
+          // descargas de la anterior pueden seguir en vuelo. Cada grupo se
+          // limpia por separado cuando TODAS sus descargas terminan.
+          const { pendingDownloads } = await chrome.storage.session.get({
+            pendingDownloads: null,
+          });
+          const groups = (pendingDownloads && pendingDownloads.groups) || [];
+          groups.push({ ids, urls, from: msg.from || "offscreen" });
+          await chrome.storage.session.set({ pendingDownloads: { groups } });
+        }
+        if (fallidas) {
+          await setNotice(
+            "error",
+            `No se pudieron guardar ${fallidas} de ${files.length} ficheros de la grabación.`
+          );
+          if (!ids.length && (msg.from || "offscreen") === "recorder") {
+            await closeRecorderWindow();
+          }
+        }
         await setRecordingState(false);
       })().catch((e) => {
         log("error al descargar:", e);
@@ -425,35 +445,38 @@ async function handleDownloadChanged(delta) {
     pendingDownloads: null,
     isRecording: false,
   });
-  if (!pendingDownloads || !pendingDownloads.ids.includes(delta.id)) return;
+  const groups = (pendingDownloads && pendingDownloads.groups) || [];
+  const group = groups.find((g) => g.ids.includes(delta.id));
+  if (!group) return;
   const state = delta.state && delta.state.current;
   if (state !== "complete" && state !== "interrupted") return;
 
-  const remaining = pendingDownloads.ids.filter((id) => id !== delta.id);
-  log("descarga finalizada:", state, "· quedan", remaining.length);
-  if (remaining.length) {
-    await chrome.storage.session.set({
-      pendingDownloads: { ...pendingDownloads, ids: remaining },
-    });
-    return;
-  }
-  await chrome.storage.session.set({ pendingDownloads: null });
+  group.ids = group.ids.filter((id) => id !== delta.id);
+  const remainingGroups = groups.filter((g) => g.ids.length);
+  log("descarga finalizada:", state, "· quedan", group.ids.length, "en su grupo");
+  await chrome.storage.session.set({
+    pendingDownloads: remainingGroups.length ? { groups: remainingGroups } : null,
+  });
+  if (group.ids.length) return;
 
-  if (pendingDownloads.from === "recorder") {
+  // El grupo terminó: liberar sus blobs y cerrar su contexto si procede.
+  if (group.from === "recorder") {
     try {
-      await sendTo("recorder", { type: "rec:cleanup", urls: pendingDownloads.urls }, 2);
+      await sendTo("recorder", { type: "rec:cleanup", urls: group.urls }, 2);
     } catch (e) {
       /* ya no existe */
     }
     await closeRecorderWindow();
   } else {
     try {
-      await sendTo("offscreen", { type: "off:cleanup", urls: pendingDownloads.urls }, 2);
+      await sendTo("offscreen", { type: "off:cleanup", urls: group.urls }, 2);
     } catch (e) {
       /* ya no existe */
     }
-    // Solo se cierra el documento si no hay otra grabación en marcha.
-    if (!isRecording && (await hasOffscreen())) {
+    // Solo se cierra el documento si no hay otra grabación en marcha NI
+    // otros grupos de descargas del offscreen en vuelo.
+    const offscreenPending = remainingGroups.some((g) => g.from !== "recorder");
+    if (!isRecording && !offscreenPending && (await hasOffscreen())) {
       try {
         await chrome.offscreen.closeDocument();
         log("documento offscreen cerrado");

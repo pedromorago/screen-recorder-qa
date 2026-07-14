@@ -40,10 +40,12 @@
     else if (el.classList && el.classList.length) ident = "." + el.classList[0];
 
     const isField = tag === "input" || tag === "textarea" || tag === "select";
+    // textContent pre-recortado y no innerText: innerText fuerza layout y
+    // en un click sobre un contenedor grande costaría un reflujo entero.
     const label = clip(
       (
         (el.getAttribute && el.getAttribute("aria-label")) ||
-        (isField ? "" : el.innerText || "") ||
+        (isField ? "" : (el.textContent || "").slice(0, 300)) ||
         (el.getAttribute && el.getAttribute("placeholder")) ||
         ""
       )

@@ -61,6 +61,7 @@
           }) ?? String(value)
         );
       }
+      if (typeof value === "bigint") return value.toString() + "n";
       return String(value);
     } catch (e) {
       return "[no serializable]";
