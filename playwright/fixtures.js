@@ -18,16 +18,24 @@ const test = base.extend({
   context: async ({}, use) => {
     await startServer(PORT);
     const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "qa-recorder-"));
-    const context = await chromium.launchPersistentContext(userDataDir, {
-      // En CI/local: `npx playwright install chromium` y se usa el bundled.
-      // CHROMIUM_PATH permite apuntar a otro binario (p. ej. sandboxes).
-      executablePath: process.env.CHROMIUM_PATH || undefined,
+    const launchOptions = {
       headless: true,
       args: [
         `--disable-extensions-except=${EXTENSION_DIR}`,
         `--load-extension=${EXTENSION_DIR}`,
       ],
-    });
+    };
+    if (process.env.CHROMIUM_PATH) {
+      // Sandbox/entornos con un binario concreto.
+      launchOptions.executablePath = process.env.CHROMIUM_PATH;
+    } else {
+      // CRÍTICO para CI: en headless, Playwright usa por defecto el
+      // "chromium headless shell", que NO carga extensiones (los 7 tests
+      // mueren esperando un service worker que nunca llega). El canal
+      // "chromium" fuerza el Chromium completo con el headless nuevo.
+      launchOptions.channel = "chromium";
+    }
+    const context = await chromium.launchPersistentContext(userDataDir, launchOptions);
     await use(context);
     await context.close();
     fs.rmSync(userDataDir, { recursive: true, force: true });

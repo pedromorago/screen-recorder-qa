@@ -30,7 +30,12 @@ describe("console-capture-main.js (world MAIN)", () => {
   });
 
   it("captura promesas rechazadas sin catch", () => {
-    cy.window().then((win) => win.eval("Promise.reject(new Error('nope E2E'))"));
+    cy.window().then((win) => {
+      // OJO: sin return. Si el callback devuelve la promesa rechazada,
+      // Cypress la espera y hace fallar el test antes de que el wrapper
+      // registre el unhandledrejection (que es justo lo que se prueba).
+      win.eval("Promise.reject(new Error('nope E2E'))");
+    });
     cy.waitForEntry((e) => e.kind === "rejection" && e.text.includes("nope E2E"));
   });
 
