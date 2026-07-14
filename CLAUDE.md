@@ -85,3 +85,11 @@ vídeo. JS plano, sin build: se carga descomprimida en Chrome.
    `fetch("https://httpstat.us/500"); fetch("/no-existe-404")` y comprobar
    que ambas aparecen como NET en el `.console.log` y que el `.har`
    (arrastrarlo a la pestaña Red de DevTools) contiene todas las peticiones.
+7. Tests E2E: `npm install && npm run test:e2e` (Cypress). Cubren el motor
+   QA (wrappers, puente, informes) inyectando los scripts REALES en páginas
+   de prueba servidas por `cypress/support/static-server.js`. El flujo
+   popup → grabar → descargar NO es automatizable con Cypress (no navega a
+   chrome-extension:// ni maneja el selector nativo): ese tramo se prueba
+   con los pasos 1-6. El harness de `reports.cy.js` carga offscreen.js con
+   un stub de chrome.*; si cambias nombres de funciones o variables
+   top-level de offscreen.js, esos tests lo notarán.

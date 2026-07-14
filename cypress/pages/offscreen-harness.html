@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Harness de offscreen.js</title>
+  <script>
+    // Stub mínimo de chrome.* para poder cargar offscreen.js fuera de la
+    // extensión y probar los generadores de informes (.console.log/.har).
+    window.chrome = {
+      runtime: {
+        onMessage: { addListener() {} },
+        sendMessage() {},
+        getManifest() { return { version: "0.0.0-test" }; },
+      },
+    };
+  </script>
+  <script src="/capture-common.js"></script>
+  <script src="/offscreen.js"></script>
+</head>
+<body>
+  Harness de generación de informes del documento offscreen.
+</body>
+</html>

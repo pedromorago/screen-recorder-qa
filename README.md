@@ -60,6 +60,24 @@ El detalle técnico completo, pensado para que una sesión de Claude Code lo lea
 2. `chrome://extensions` → activa **Modo de desarrollador**
 3. **Cargar descomprimida** → selecciona la carpeta del repo
 
+## Tests E2E (Cypress)
+
+```bash
+npm install
+npm run test:e2e          # headless (Electron)
+npm run test:e2e:chrome   # en Chrome, cargando además la extensión real
+npm run cypress:open      # modo interactivo
+```
+
+La suite cubre el motor del modo QA de punta a punta en un navegador real: los tests levantan un servidor local, cargan páginas de prueba e inyectan los **scripts reales de la extensión** (los mismos ficheros que inyecta `chrome.scripting.executeScript` en producción), y verifican el comportamiento observable:
+
+- `console-capture.cy.js` — wrapper de consola: niveles y argumentos, excepciones, promesas rechazadas, recursos 404, objetos circulares, recorte de mensajes gigantes, guarda de doble inyección
+- `network-capture.cy.js` — wrapper de red: fetch 200/500, resolución de URLs relativas, fallos de red con status 0, XHR con headers de petición/respuesta, guarda de doble inyección
+- `bridge.cy.js` — puente del mundo aislado: entrada de navegación, agrupación en lotes, vaciado inmediato a las 50 entradas
+- `reports.cy.js` — generadores de informes del offscreen: formato de offsets, filtrado por interruptores, `.console.log`/`.console.json` y validez del HAR (pages por navegación, `pageref` por timestamp, queryString)
+
+**Dónde está el límite, y por qué**: Cypress no puede navegar a páginas `chrome-extension://` ni manejar el selector nativo de captura de Chrome, así que el flujo completo (popup → grabar → descargar el vídeo) no es automatizable con esta herramienta; queda cubierto por el checklist manual de [`CLAUDE.md`](./CLAUDE.md). Es una limitación de Cypress, no del diseño: con Playwright (que sí accede al service worker de una extensión MV3 cargada) ese tramo también sería automatizable, y está en el roadmap. Elegir qué capa se testea con qué herramienta —y saber qué NO puede testear la que usas— es exactamente el criterio que este repo quiere demostrar.
+
 ## Roadmap
 
 La dirección es un grabador orientado a reportes de bugs de QA. Hecho y pendiente:
