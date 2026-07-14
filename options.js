@@ -52,8 +52,8 @@ $("btnSave").addEventListener("click", async () => {
 $("btnTest").addEventListener("click", async () => {
   showStatus("ok", "Testing…");
   try {
-    const texto = await testIssueConnection(readForm());
-    showStatus("ok", texto);
+    const text = await testIssueConnection(readForm());
+    showStatus("ok", text);
   } catch (e) {
     showStatus("error", "Connection failed: " + (e.message || e));
   }
