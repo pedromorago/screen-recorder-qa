@@ -66,11 +66,13 @@
     drawing = false;
   }
 
-  function button(text, title, onClick, extra) {
+  function button(text, title, onClick, extra, action) {
     const b = document.createElement("button");
     b.type = "button";
     b.textContent = text;
     b.title = title;
+    b.setAttribute("aria-label", title);
+    if (action) b.setAttribute("data-action", action);
     b.style.cssText =
       "border:1px solid rgba(255,255,255,.35);background:transparent;color:#fff;" +
       "border-radius:999px;padding:4px 10px;font:12px system-ui,sans-serif;cursor:pointer;" +
@@ -104,8 +106,8 @@
         `width:22px;height:22px;padding:0;background:${c};border:2px solid #fff;`);
       toolbar.appendChild(swatch);
     }
-    toolbar.appendChild(button("Borrar", "Borrar los trazos", clearCanvas));
-    toolbar.appendChild(button("Salir ✕", "Cerrar la anotación (Esc)", () => setActive(false)));
+    toolbar.appendChild(button("Borrar", "Borrar los trazos", clearCanvas, "", "clear"));
+    toolbar.appendChild(button("Salir ✕", "Cerrar la anotación (Esc)", () => setActive(false), "", "close"));
     container.appendChild(toolbar);
 
     document.documentElement.appendChild(container);

@@ -7,11 +7,16 @@ Cypress.on("uncaught:exception", () => false);
 
 // Inyecta un script REAL de la extensión (fichero de la raíz del repo) en
 // la página de prueba, equivalente a lo que hace en producción
-// chrome.scripting.executeScript con world: "MAIN".
+// chrome.scripting.executeScript. Con un <script> clásico y no con
+// win.eval: eval desde el runner NO crea globales con las declaraciones
+// top-level (issue-reporter.js las necesita).
 Cypress.Commands.add("injectExtensionScript", (file) => {
   cy.readFile(file, "utf8").then((code) => {
     cy.window().then((win) => {
-      win.eval(code);
+      const s = win.document.createElement("script");
+      s.textContent = code;
+      win.document.head.appendChild(s);
+      s.remove();
     });
   });
 });

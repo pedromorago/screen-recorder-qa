@@ -49,17 +49,25 @@ describe("annotate-overlay.js (superficie de anotación)", () => {
     toggle();
     draw();
     cy.window().should((win) => expect(paintedPixels(win), "trazo pintado").to.be.true);
-    cy.contains("#qa-recorder-annotate button", "Borrar").click();
+    // force: el overlay se superpone a todo por diseño y Cypress lo trata
+    // como "elemento cubierto".
+    cy.get("#qa-recorder-annotate button[data-action=clear]").click({ force: true });
     cy.window().should((win) => expect(paintedPixels(win), "lienzo limpio").to.be.false);
   });
 
   it("Esc cierra la anotación y al cerrarse limpia el lienzo", () => {
     toggle();
     draw();
-    cy.get("body").trigger("keydown", { key: "Escape" });
+    cy.get("body").trigger("keydown", { key: "Escape", force: true });
     cy.get("#qa-recorder-annotate").should("not.be.visible");
     toggle();
     cy.window().should((win) => expect(paintedPixels(win)).to.be.false);
+  });
+
+  it("el botón «Salir» también cierra la anotación", () => {
+    toggle();
+    cy.get("#qa-recorder-annotate button[data-action=close]").click({ force: true });
+    cy.get("#qa-recorder-annotate").should("not.be.visible");
   });
 
   it("al activarse deja una entrada en la línea de tiempo", () => {
