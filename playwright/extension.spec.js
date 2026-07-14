@@ -36,6 +36,12 @@ test("the popup toggles persist in chrome.storage.local", async ({ context, exte
   const popup = await context.newPage();
   await popup.goto(`chrome-extension://${extensionId}/popup.html`);
 
+  // The checkbox is unchecked in the raw HTML and the popup's async init
+  // checks it from storage defaults. Interacting before init finishes
+  // would make uncheck() a no-op (flaky on slow CI runners): wait for the
+  // init to land first.
+  await expect(popup.locator("#networkLog")).toBeChecked();
+
   // Clicking the checkbox directly works thanks to the switch track's
   // pointer-events:none (an accessibility fix this very suite surfaced).
   await popup.locator("#networkLog").uncheck();
