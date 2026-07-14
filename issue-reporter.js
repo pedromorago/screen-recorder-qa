@@ -1,13 +1,13 @@
 "use strict";
 
-// Creación de issues en Jira/Linear a partir del informe de grabación.
-// Sin dependencias de chrome.*: se carga con importScripts() en el service
-// worker, con <script> en options.html y en los tests. Las credenciales
-// viven en chrome.storage.local (issueReporter) y nunca aquí.
+// Jira/Linear issue creation from the recording report. No chrome.*
+// dependencies: loaded with importScripts() in the service worker, with
+// <script> in options.html and in the tests. Credentials live in
+// chrome.storage.local (issueReporter) and never here.
 //
-// Jira: REST v2 (acepta descripción en texto plano; la v3 exige ADF).
-// Linear: GraphQL con API key personal; el team se da por su KEY visible
-// (p. ej. "QA") y se resuelve a id con una query previa.
+// Jira: REST v2 (accepts a plain-text description; v3 requires ADF).
+// Linear: GraphQL with a personal API key; the team is given by its
+// visible KEY (e.g. "QA") and resolved to an id with a prior query.
 
 const LINEAR_URL_DEFAULT = "https://api.linear.app/graphql";
 
@@ -45,7 +45,7 @@ async function jiraCreateIssue(cfg, title, body) {
   const { url, options } = buildJiraCreate(cfg, title, body);
   const res = await fetch(url, options);
   if (!res.ok) {
-    throw new Error("Jira respondió " + res.status + ": " + clipErr(await res.text()));
+    throw new Error("Jira responded " + res.status + ": " + clipErr(await res.text()));
   }
   const data = await res.json();
   return { key: data.key, url: trimBase(cfg.siteUrl) + "/browse/" + data.key };
@@ -67,7 +67,7 @@ function linearRequest(cfg, query, variables) {
 async function linearQuery(cfg, query, variables) {
   const res = await linearRequest(cfg, query, variables);
   if (!res.ok) {
-    throw new Error("Linear respondió " + res.status + ": " + clipErr(await res.text()));
+    throw new Error("Linear responded " + res.status + ": " + clipErr(await res.text()));
   }
   const data = await res.json();
   if (data.errors && data.errors.length) {
@@ -83,7 +83,7 @@ async function linearResolveTeamId(cfg) {
     { key: cfg.teamKey }
   );
   const nodes = (data.teams && data.teams.nodes) || [];
-  if (!nodes.length) throw new Error('Linear: no existe un equipo con clave "' + cfg.teamKey + '"');
+  if (!nodes.length) throw new Error('Linear: no team exists with key "' + cfg.teamKey + '"');
   return nodes[0].id;
 }
 
@@ -95,33 +95,33 @@ async function linearCreateIssue(cfg, title, body) {
     { input: { teamId, title, description: body } }
   );
   const out = data.issueCreate;
-  if (!out || !out.success || !out.issue) throw new Error("Linear no confirmó la creación");
+  if (!out || !out.success || !out.issue) throw new Error("Linear did not confirm the creation");
   return { key: out.issue.identifier, url: out.issue.url };
 }
 
-// ---------- API común ----------
+// ---------- Shared API ----------
 
 // cfgAll = { provider: "none"|"jira"|"linear", autoCreate, jira: {...}, linear: {...} }
 async function createIssueFromReport(cfgAll, title, body) {
   if (cfgAll && cfgAll.provider === "jira") return jiraCreateIssue(cfgAll.jira || {}, title, body);
   if (cfgAll && cfgAll.provider === "linear") return linearCreateIssue(cfgAll.linear || {}, title, body);
-  throw new Error("No hay proveedor de issues configurado");
+  throw new Error("No issue provider configured");
 }
 
-// Verificación de credenciales sin crear nada.
+// Credential check without creating anything.
 async function testIssueConnection(cfgAll) {
   if (cfgAll && cfgAll.provider === "jira") {
     const cfg = cfgAll.jira || {};
     const res = await fetch(trimBase(cfg.siteUrl) + "/rest/api/2/myself", {
       headers: { Authorization: "Basic " + btoa(cfg.email + ":" + cfg.apiToken) },
     });
-    if (!res.ok) throw new Error("Jira respondió " + res.status);
+    if (!res.ok) throw new Error("Jira responded " + res.status);
     const me = await res.json();
-    return "Conectado a Jira como " + (me.displayName || me.emailAddress || "usuario");
+    return "Connected to Jira as " + (me.displayName || me.emailAddress || "user");
   }
   if (cfgAll && cfgAll.provider === "linear") {
     const data = await linearQuery(cfgAll.linear || {}, "query { viewer { name } }", {});
-    return "Conectado a Linear como " + ((data.viewer && data.viewer.name) || "usuario");
+    return "Connected to Linear as " + ((data.viewer && data.viewer.name) || "user");
   }
-  throw new Error("Elige un proveedor primero");
+  throw new Error("Pick a provider first");
 }

@@ -1,9 +1,9 @@
 "use strict";
 
-// Servidor estático para los tests E2E: sirve la raíz del repo (los tests
-// cargan los scripts REALES de la extensión) más unos endpoints /api/* de
-// utilería para provocar respuestas 200/500 y cabeceras conocidas.
-// Separado de cypress.config.js para poder reutilizarlo fuera de Cypress.
+// Static server for the E2E tests: serves the repo root (tests load the
+// extension's REAL scripts) plus /api/* utility endpoints to provoke
+// 200/500 responses and known headers. Kept separate from
+// cypress.config.js so it can be reused outside Cypress.
 
 const http = require("http");
 const fs = require("fs");
@@ -18,8 +18,8 @@ const MIME = {
   ".png": "image/png",
 };
 
-// Última petición recibida por los mocks de Jira/Linear, para que los
-// tests puedan asertar headers y cuerpo.
+// Last request received by the Jira/Linear mocks, so tests can assert
+// headers and body.
 const lastMock = {};
 
 function readBody(req) {
@@ -47,13 +47,13 @@ async function mockHandler(req, res, url) {
   }
   if (url.pathname === "/mock/jira/rest/api/2/myself") {
     lastMock.jiraMyself = { authorization: req.headers.authorization };
-    json(res, 200, { displayName: "Tester de Prueba" });
+    json(res, 200, { displayName: "Test User" });
     return true;
   }
-  if (url.pathname === "/mock/jira-roto/rest/api/2/issue" && req.method === "POST") {
+  if (url.pathname === "/mock/jira-broken/rest/api/2/issue" && req.method === "POST") {
     await readBody(req);
     res.writeHead(401, { "Content-Type": "text/plain" });
-    res.end("credenciales inválidas");
+    res.end("invalid credentials");
     return true;
   }
   if (url.pathname === "/mock/linear/graphql" && req.method === "POST") {
@@ -71,7 +71,7 @@ async function mockHandler(req, res, url) {
         },
       });
     } else if (body.query.includes("viewer")) {
-      json(res, 200, { data: { viewer: { name: "Tester de Prueba" } } });
+      json(res, 200, { data: { viewer: { name: "Test User" } } });
     } else {
       json(res, 200, { data: {} });
     }
@@ -87,7 +87,7 @@ function handler(req, res) {
     mockHandler(req, res, url).then((handled) => {
       if (!handled) {
         res.writeHead(404, { "Content-Type": "text/plain" });
-        res.end("mock no definido");
+        res.end("mock not defined");
       }
     });
     return;
@@ -96,7 +96,7 @@ function handler(req, res) {
   if (url.pathname === "/api/ok") {
     res.writeHead(200, {
       "Content-Type": "application/json",
-      "X-Test-Header": "hola",
+      "X-Test-Header": "hello",
     });
     res.end('{"ok":true}');
     return;
@@ -108,7 +108,7 @@ function handler(req, res) {
   }
   if (url.pathname.startsWith("/api/")) {
     res.writeHead(404, { "Content-Type": "text/plain" });
-    res.end("no existe");
+    res.end("does not exist");
     return;
   }
 
@@ -116,7 +116,7 @@ function handler(req, res) {
   const file = path.join(ROOT, rel);
   if (!file.startsWith(ROOT) || !fs.existsSync(file) || !fs.statSync(file).isFile()) {
     res.writeHead(404, { "Content-Type": "text/plain" });
-    res.end("no encontrado");
+    res.end("not found");
     return;
   }
   res.writeHead(200, {
@@ -134,7 +134,7 @@ function startServer(port) {
     server.listen(port, () => resolve(server));
     server.on("error", (e) => {
       server = null;
-      // Otro proceso (cypress open + run a la vez) ya lo tiene levantado.
+      // Another process (cypress open + run at once) already started it.
       if (e.code === "EADDRINUSE") resolve(null);
       else reject(e);
     });

@@ -1,22 +1,22 @@
 "use strict";
 
-// E2E del wrapper de red (network-capture-main.js): fetch y XHR reales
-// contra el servidor de pruebas local, verificando lo publicado.
+// E2E for the network wrapper (network-capture-main.js): real fetch and
+// XHR against the local test server, verifying what gets published.
 
-describe("network-capture-main.js (world MAIN)", () => {
+describe("network-capture-main.js (MAIN world)", () => {
   beforeEach(() => {
     cy.visit("/cypress/pages/sandbox.html");
     cy.startEntryCollector();
     cy.injectExtensionScript("network-capture-main.js");
   });
 
-  it("registra un fetch 200 con URL absoluta, duración y headers de respuesta", () => {
+  it("records a 200 fetch with absolute URL, duration and response headers", () => {
     cy.window().then((win) => win.eval("fetch('/api/ok?a=1&b=2')"));
     cy.waitForEntry((e) => e.kind === "net" && e.net && e.net.status === 200).then((entry) => {
       expect(entry.level).to.equal("info");
       expect(entry.net.initiator).to.equal("fetch");
       expect(entry.net.method).to.equal("GET");
-      // La URL relativa queda resuelta a absoluta (necesario para el HAR).
+      // Relative URLs are resolved to absolute (required for the HAR).
       expect(entry.net.url).to.equal(`${Cypress.config("baseUrl")}/api/ok?a=1&b=2`);
       expect(entry.net.durationMs).to.be.a("number").and.to.be.gte(0);
       const names = entry.net.responseHeaders.map((h) => h.name.toLowerCase());
@@ -25,7 +25,7 @@ describe("network-capture-main.js (world MAIN)", () => {
     });
   });
 
-  it("marca un 500 como error y lo refleja en el texto de la entrada", () => {
+  it("marks a 500 as error and reflects it in the entry text", () => {
     cy.window().then((win) => win.eval("fetch('/api/error')"));
     cy.waitForEntry((e) => e.kind === "net" && e.net && e.net.status === 500).then((entry) => {
       expect(entry.level).to.equal("error");
@@ -33,35 +33,35 @@ describe("network-capture-main.js (world MAIN)", () => {
     });
   });
 
-  it("registra el fallo de red (servidor inalcanzable) con status 0 y error", () => {
+  it("records a network failure (unreachable server) with status 0 and error", () => {
     cy.window().then((win) => win.eval("fetch('http://localhost:1/x').catch(() => {})"));
     cy.waitForEntry((e) => e.kind === "net" && e.net && e.net.error).then((entry) => {
       expect(entry.level).to.equal("error");
       expect(entry.net.status).to.equal(0);
-      expect(entry.text).to.include("FALLO");
+      expect(entry.text).to.include("FAILED");
     });
   });
 
-  it("registra XHR con método, headers de petición y de respuesta", () => {
+  it("records XHR with method, request and response headers", () => {
     cy.window().then((win) =>
       win.eval(`
         const x = new XMLHttpRequest();
         x.open("POST", "/api/ok");
-        x.setRequestHeader("X-Peticion", "qa");
-        x.send("cuerpo");
+        x.setRequestHeader("X-Request", "qa");
+        x.send("body");
       `)
     );
     cy.waitForEntry((e) => e.kind === "net" && e.net && e.net.initiator === "xhr").then((entry) => {
       expect(entry.net.method).to.equal("POST");
       expect(entry.net.status).to.equal(200);
       expect(entry.net.url).to.equal(`${Cypress.config("baseUrl")}/api/ok`);
-      expect(entry.net.requestHeaders).to.deep.include({ name: "X-Peticion", value: "qa" });
+      expect(entry.net.requestHeaders).to.deep.include({ name: "X-Request", value: "qa" });
       const names = entry.net.responseHeaders.map((h) => h.name.toLowerCase());
       expect(names).to.include("x-test-header");
     });
   });
 
-  it("XHR contra servidor caído queda como status 0 con motivo", () => {
+  it("XHR against a dead server ends as status 0 with a reason", () => {
     cy.window().then((win) =>
       win.eval(`
         const x = new XMLHttpRequest();
@@ -71,42 +71,42 @@ describe("network-capture-main.js (world MAIN)", () => {
     );
     cy.waitForEntry((e) => e.kind === "net" && e.net && e.net.initiator === "xhr").then((entry) => {
       expect(entry.net.status).to.equal(0);
-      expect(entry.net.error).to.include("sin respuesta");
+      expect(entry.net.error).to.include("no response");
     });
   });
 
-  it("un XHR reutilizado (open/send dos veces) no duplica entradas", () => {
+  it("a reused XHR (open/send twice) does not duplicate entries", () => {
     cy.window().then((win) =>
       win.eval(`
         window.__xhrReuse = new XMLHttpRequest();
-        __xhrReuse.open("GET", "/api/ok?ronda=1");
+        __xhrReuse.open("GET", "/api/ok?round=1");
         __xhrReuse.send();
       `)
     );
-    cy.waitForEntry((e) => e.kind === "net" && e.net && e.net.url.includes("ronda=1"));
+    cy.waitForEntry((e) => e.kind === "net" && e.net && e.net.url.includes("round=1"));
     cy.window().then((win) =>
       win.eval(`
-        __xhrReuse.open("GET", "/api/ok?ronda=2");
+        __xhrReuse.open("GET", "/api/ok?round=2");
         __xhrReuse.send();
       `)
     );
-    cy.waitForEntry((e) => e.kind === "net" && e.net && e.net.url.includes("ronda=2"));
+    cy.waitForEntry((e) => e.kind === "net" && e.net && e.net.url.includes("round=2"));
     cy.window().should((win) => {
       const nets = win.__entries.filter((e) => e.kind === "net");
-      expect(nets.filter((e) => e.net.url.includes("ronda=1")), "primera petición").to.have.length(1);
-      expect(nets.filter((e) => e.net.url.includes("ronda=2")), "segunda petición").to.have.length(1);
+      expect(nets.filter((e) => e.net.url.includes("round=1")), "first request").to.have.length(1);
+      expect(nets.filter((e) => e.net.url.includes("round=2")), "second request").to.have.length(1);
     });
   });
 
-  it("la doble inyección no duplica peticiones (guarda de instalación)", () => {
-    cy.injectExtensionScript("network-capture-main.js"); // segunda inyección
-    cy.window().then((win) => win.eval("fetch('/api/ok?unica=1')"));
-    cy.waitForEntry((e) => e.kind === "net" && e.net && e.net.url.includes("unica=1"));
+  it("double injection does not duplicate requests (install guard)", () => {
+    cy.injectExtensionScript("network-capture-main.js"); // second injection
+    cy.window().then((win) => win.eval("fetch('/api/ok?single=1')"));
+    cy.waitForEntry((e) => e.kind === "net" && e.net && e.net.url.includes("single=1"));
     cy.window().should((win) => {
-      const repetidas = win.__entries.filter(
-        (e) => e.kind === "net" && e.net && e.net.url.includes("unica=1")
+      const repeats = win.__entries.filter(
+        (e) => e.kind === "net" && e.net && e.net.url.includes("single=1")
       );
-      expect(repetidas).to.have.length(1);
+      expect(repeats).to.have.length(1);
     });
   });
 });

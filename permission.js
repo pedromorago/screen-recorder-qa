@@ -5,21 +5,21 @@ const retryBtn = document.getElementById("retry");
 
 async function ask() {
   statusEl.className = "";
-  statusEl.textContent = "Solicitando permiso…";
+  statusEl.textContent = "Requesting permission…";
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     stream.getTracks().forEach((t) => t.stop());
     statusEl.className = "ok";
-    statusEl.textContent = "Micrófono permitido. Esta pestaña se cerrará sola.";
+    statusEl.textContent = "Microphone allowed. This tab will close itself.";
     setTimeout(() => {
       chrome.tabs.getCurrent((tab) => tab && chrome.tabs.remove(tab.id));
     }, 1500);
   } catch (e) {
     statusEl.className = "fail";
     statusEl.textContent =
-      "No se concedió el permiso (" +
+      "Permission was not granted (" +
       (e.name || "error") +
-      "). Pulsa el icono del candado o de la cámara en la barra de direcciones, permite el micrófono y reintenta.";
+      "). Click the lock or camera icon in the address bar, allow the microphone and retry.";
   }
 }
 

@@ -1,8 +1,8 @@
 "use strict";
 
-// E2E de la superficie de anotación (annotate-overlay.js): el toggle que
-// en producción llega por chrome.tabs.sendMessage se simula capturando el
-// listener con un stub de chrome.runtime.
+// E2E for the annotation surface (annotate-overlay.js): the toggle that
+// arrives via chrome.tabs.sendMessage in production is simulated by
+// capturing the listener with a chrome.runtime stub.
 
 const paintedPixels = (win) => {
   const c = win.document.querySelector("#qa-recorder-annotate canvas");
@@ -11,7 +11,7 @@ const paintedPixels = (win) => {
   return false;
 };
 
-describe("annotate-overlay.js (superficie de anotación)", () => {
+describe("annotate-overlay.js (annotation surface)", () => {
   beforeEach(() => {
     cy.visit("/cypress/pages/sandbox.html");
     cy.startEntryCollector();
@@ -36,7 +36,7 @@ describe("annotate-overlay.js (superficie de anotación)", () => {
       .trigger("pointermove", { clientX: 180, clientY: 260, pointerId: 1, eventConstructor: "PointerEvent" })
       .trigger("pointerup", { pointerId: 1, eventConstructor: "PointerEvent" });
 
-  it("arranca oculta y se muestra/oculta con el toggle", () => {
+  it("starts hidden and shows/hides with the toggle", () => {
     cy.get("#qa-recorder-annotate").should("not.exist");
     toggle();
     cy.get("#qa-recorder-annotate").should("be.visible");
@@ -45,17 +45,17 @@ describe("annotate-overlay.js (superficie de anotación)", () => {
     cy.get("#qa-recorder-annotate").should("not.be.visible");
   });
 
-  it("dibujar pinta píxeles y «Borrar» los limpia", () => {
+  it('drawing paints pixels and "Clear" wipes them', () => {
     toggle();
     draw();
-    cy.window().should((win) => expect(paintedPixels(win), "trazo pintado").to.be.true);
-    // force: el overlay se superpone a todo por diseño y Cypress lo trata
-    // como "elemento cubierto".
+    cy.window().should((win) => expect(paintedPixels(win), "stroke painted").to.be.true);
+    // force: the overlay covers everything by design and Cypress treats
+    // that as a "covered element".
     cy.get("#qa-recorder-annotate button[data-action=clear]").click({ force: true });
-    cy.window().should((win) => expect(paintedPixels(win), "lienzo limpio").to.be.false);
+    cy.window().should((win) => expect(paintedPixels(win), "canvas clean").to.be.false);
   });
 
-  it("Esc cierra la anotación y al cerrarse limpia el lienzo", () => {
+  it("Esc closes the annotation and closing clears the canvas", () => {
     toggle();
     draw();
     cy.get("body").trigger("keydown", { key: "Escape", force: true });
@@ -64,34 +64,34 @@ describe("annotate-overlay.js (superficie de anotación)", () => {
     cy.window().should((win) => expect(paintedPixels(win)).to.be.false);
   });
 
-  it("el botón «Salir» también cierra la anotación", () => {
+  it('the "Exit" button also closes the annotation', () => {
     toggle();
     cy.get("#qa-recorder-annotate button[data-action=close]").click({ force: true });
     cy.get("#qa-recorder-annotate").should("not.be.visible");
   });
 
-  it("al activarse deja una entrada en la línea de tiempo", () => {
+  it("leaves a timeline entry when enabled", () => {
     toggle();
     cy.waitForEntry(
-      (e) => e.kind === "step" && e.text.includes("Anotación sobre el vídeo activada")
+      (e) => e.kind === "step" && e.text.includes("On-video annotation enabled")
     );
   });
 
-  it("los gestos de dibujo no contaminan el registro de pasos", () => {
+  it("drawing gestures do not pollute the steps log", () => {
     cy.injectExtensionScript("steps-capture.js");
     toggle();
     draw();
     cy.get("#qa-recorder-annotate canvas").trigger("click", { clientX: 120, clientY: 220 });
     cy.window().should((win) => {
       const clicks = win.__entries.filter(
-        (e) => e.kind === "step" && e.text.startsWith("Click en")
+        (e) => e.kind === "step" && e.text.startsWith("Click on")
       );
-      expect(clicks, "ningún click del overlay como paso").to.have.length(0);
+      expect(clicks, "no overlay click recorded as a step").to.have.length(0);
     });
   });
 
-  it("la doble inyección no duplica la superficie (guarda de instalación)", () => {
-    cy.injectExtensionScript("annotate-overlay.js"); // segunda inyección
+  it("double injection does not duplicate the surface (install guard)", () => {
+    cy.injectExtensionScript("annotate-overlay.js"); // second injection
     toggle();
     cy.get("#qa-recorder-annotate").should("have.length", 1);
   });

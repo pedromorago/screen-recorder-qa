@@ -1,8 +1,8 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Grabación de pantalla</title>
+<title>Screen recording</title>
 <style>
   :root{
     --bg:#0E1116; --panel:#1E252E; --border:#2A323D; --border-hi:#3A4552;
@@ -47,21 +47,21 @@
 </head>
 <body data-state="picking">
   <div class="card">
-    <div class="head"><span class="dot"></span> Grabador de pantalla</div>
+    <div class="head"><span class="dot"></span> Screen Recorder</div>
 
     <div class="view" id="viewPicking">
-      <p>Elige en el diálogo de Chrome qué pantalla o ventana quieres grabar. Marca <strong>Compartir audio</strong> si quieres el sonido del sistema.</p>
+      <p>Pick in Chrome's dialog which screen or window to record. Check <strong>Share audio</strong> if you want system sound.</p>
     </div>
 
     <div class="view" id="viewRecording">
       <div id="timer">00:00</div>
-      <p>Grabando pantalla</p>
-      <button id="btnStop">Parar y guardar</button>
-      <div class="warn">Esta ventana queda minimizada mientras graba y se cierra sola al guardar. Si la cierras a mano, la grabación se pierde.</div>
+      <p>Recording screen</p>
+      <button id="btnStop">Stop and save</button>
+      <div class="warn">This window stays minimized while recording and closes itself on save. If you close it by hand, the recording is lost.</div>
     </div>
 
     <div class="view" id="viewSaving">
-      <p>Guardando la grabación…</p>
+      <p>Saving the recording…</p>
     </div>
   </div>
   <script src="capture-common.js"></script>

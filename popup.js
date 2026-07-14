@@ -52,33 +52,33 @@ async function refresh() {
   render(s);
 }
 
-// Actualización en vivo mientras el popup está abierto
-// (por ejemplo, si llega un error del offscreen).
+// Live updates while the popup is open (e.g. an error arriving from the
+// offscreen document).
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === "session") refresh();
 });
 
-// ---------- Ajustes ----------
+// ---------- Settings ----------
 
 micIn.addEventListener("change", async () => {
   await chrome.storage.local.set({ mic: micIn.checked });
   if (!micIn.checked) return;
 
-  // El documento offscreen no puede mostrar el aviso de permiso del
-  // micrófono, así que se concede una vez desde una página visible.
+  // The offscreen document cannot show the microphone permission prompt,
+  // so it is granted once from a visible page.
   let state = "prompt";
   try {
     const st = await navigator.permissions.query({ name: "microphone" });
     state = st.state;
   } catch (e) {
-    /* si no se puede consultar, se abre la página igualmente */
+    /* if it cannot be queried, open the page anyway */
   }
   if (state === "granted") return;
   if (state === "denied") {
     await chrome.storage.session.set({
       notice: {
         kind: "warn",
-        text: "El micrófono está bloqueado para la extensión. Ábrelo en Configuración de sitios de Chrome (Micrófono) y permítelo.",
+        text: "The microphone is blocked for this extension. Open Chrome's Site settings (Microphone) and allow it.",
         at: Date.now(),
       },
     });
@@ -103,7 +103,7 @@ qualitySel.addEventListener("change", () =>
   chrome.storage.local.set({ quality: qualitySel.value })
 );
 
-// ---------- Grabar / parar ----------
+// ---------- Record / stop ----------
 
 btnTab.addEventListener("click", async () => {
   await chrome.runtime.sendMessage({ target: "background", type: "popup:startTab" });
@@ -112,25 +112,25 @@ btnTab.addEventListener("click", async () => {
 
 btnScreen.addEventListener("click", async () => {
   await chrome.runtime.sendMessage({ target: "background", type: "popup:startScreen" });
-  // Se cierra para que el selector de captura quede en primer plano.
+  // Closed so the capture picker ends up in the foreground.
   window.close();
 });
 
 btnStop.addEventListener("click", async () => {
   await chrome.runtime.sendMessage({ target: "background", type: "popup:stop" });
-  // El popup queda abierto: se ve el cambio de estado y cualquier aviso.
+  // The popup stays open: the state change and any notice are visible.
 });
 
 btnMarker.addEventListener("click", async () => {
   await chrome.runtime.sendMessage({ target: "background", type: "popup:marker" });
-  // Feedback breve sin cerrar el popup.
-  btnMarker.textContent = "💥 Marcado";
-  setTimeout(() => (btnMarker.textContent = "💥 Marcar bug aquí"), 900);
+  // Brief feedback without closing the popup.
+  btnMarker.textContent = "💥 Marked";
+  setTimeout(() => (btnMarker.textContent = "💥 Mark bug here"), 900);
 });
 
 btnAnnotate.addEventListener("click", async () => {
   await chrome.runtime.sendMessage({ target: "background", type: "popup:annotate" });
-  // Se cierra para que el usuario pueda dibujar sobre la página al momento.
+  // Closed so the user can draw on the page right away.
   window.close();
 });
 

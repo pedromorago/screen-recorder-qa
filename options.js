@@ -1,7 +1,7 @@
 "use strict";
 
-// Página de opciones: configuración del proveedor de issues (Jira/Linear).
-// La lógica de red vive en issue-reporter.js (compartida con el SW).
+// Options page: issue provider configuration (Jira/Linear).
+// The network logic lives in issue-reporter.js (shared with the SW).
 
 const $ = (id) => document.getElementById(id);
 const statusEl = $("status");
@@ -46,16 +46,16 @@ $("provider").addEventListener("change", () => {
 
 $("btnSave").addEventListener("click", async () => {
   await chrome.storage.local.set({ issueReporter: readForm() });
-  showStatus("ok", "Guardado.");
+  showStatus("ok", "Saved.");
 });
 
 $("btnTest").addEventListener("click", async () => {
-  showStatus("ok", "Probando…");
+  showStatus("ok", "Testing…");
   try {
     const texto = await testIssueConnection(readForm());
     showStatus("ok", texto);
   } catch (e) {
-    showStatus("error", "Fallo de conexión: " + (e.message || e));
+    showStatus("error", "Connection failed: " + (e.message || e));
   }
 });
 

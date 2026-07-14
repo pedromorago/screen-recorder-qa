@@ -1,9 +1,9 @@
 "use strict";
 
-// Fixtures de Playwright para probar la EXTENSIÓN REAL cargada en Chromium:
-// contexto persistente con --load-extension, service worker MV3 y su ID.
-// Complementa a la suite de Cypress, que cubre el motor de captura pero no
-// puede tocar chrome-extension:// (ver README).
+// Playwright fixtures to test the REAL EXTENSION loaded in Chromium:
+// a persistent context with --load-extension, the MV3 service worker
+// and its ID. Complements the Cypress suite, which covers the capture
+// engine but cannot touch chrome-extension:// (see README).
 
 const { test: base, chromium, expect } = require("@playwright/test");
 const path = require("path");
@@ -26,13 +26,13 @@ const test = base.extend({
       ],
     };
     if (process.env.CHROMIUM_PATH) {
-      // Sandbox/entornos con un binario concreto.
+      // Sandboxes/environments with a specific binary.
       launchOptions.executablePath = process.env.CHROMIUM_PATH;
     } else {
-      // CRÍTICO para CI: en headless, Playwright usa por defecto el
-      // "chromium headless shell", que NO carga extensiones (los 7 tests
-      // mueren esperando un service worker que nunca llega). El canal
-      // "chromium" fuerza el Chromium completo con el headless nuevo.
+      // CRITICAL for CI: in headless mode, Playwright defaults to the
+      // "chromium headless shell", which does NOT load extensions (every
+      // test dies waiting for a service worker that never arrives). The
+      // "chromium" channel forces full Chromium with the new headless.
       launchOptions.channel = "chromium";
     }
     const context = await chromium.launchPersistentContext(userDataDir, launchOptions);
@@ -41,8 +41,8 @@ const test = base.extend({
     fs.rmSync(userDataDir, { recursive: true, force: true });
   },
 
-  // Service worker de la extensión (background.js). MV3: puede tardar en
-  // registrarse tras abrir el contexto.
+  // The extension's service worker (background.js). MV3: it can take a
+  // moment to register after the context opens.
   sw: async ({ context }, use) => {
     let [sw] = context.serviceWorkers();
     if (!sw) sw = await context.waitForEvent("serviceworker");

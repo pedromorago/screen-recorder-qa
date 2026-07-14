@@ -1,8 +1,8 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Grabador de pantalla · Opciones</title>
+<title>Screen Recorder · Options</title>
 <style>
   :root{
     --bg:#141A20; --panel:#1E252E; --border:#2A323D; --border-hi:#3A4552;
@@ -32,45 +32,45 @@
 </style>
 </head>
 <body data-provider="none">
-  <h1>Informe → Jira / Linear</h1>
+  <h1>Report → Jira / Linear</h1>
 
   <div class="panel">
-    <label for="provider">Proveedor</label>
+    <label for="provider">Provider</label>
     <select id="provider">
-      <option value="none">Ninguno (no crear issues)</option>
+      <option value="none">None (do not create issues)</option>
       <option value="jira">Jira Cloud</option>
       <option value="linear">Linear</option>
     </select>
 
     <div id="jiraFields">
-      <label for="jiraSiteUrl">URL del sitio</label>
-      <input id="jiraSiteUrl" placeholder="https://tuequipo.atlassian.net">
-      <label for="jiraEmail">Email de la cuenta</label>
-      <input id="jiraEmail" type="email" placeholder="tu@email.com">
+      <label for="jiraSiteUrl">Site URL</label>
+      <input id="jiraSiteUrl" placeholder="https://yourteam.atlassian.net">
+      <label for="jiraEmail">Account email</label>
+      <input id="jiraEmail" type="email" placeholder="you@email.com">
       <label for="jiraApiToken">API token</label>
-      <input id="jiraApiToken" type="password" placeholder="Se crea en id.atlassian.com → Security → API tokens">
-      <label for="jiraProjectKey">Clave del proyecto</label>
+      <input id="jiraApiToken" type="password" placeholder="Created at id.atlassian.com → Security → API tokens">
+      <label for="jiraProjectKey">Project key</label>
       <input id="jiraProjectKey" placeholder="QA">
     </div>
 
     <div id="linearFields">
-      <label for="linearApiKey">API key personal</label>
+      <label for="linearApiKey">Personal API key</label>
       <input id="linearApiKey" type="password" placeholder="lin_api_… (Linear → Settings → API)">
-      <label for="linearTeamKey">Clave del equipo</label>
-      <input id="linearTeamKey" placeholder="QA (el prefijo de tus issues)">
+      <label for="linearTeamKey">Team key</label>
+      <input id="linearTeamKey" placeholder="QA (your issues' prefix)">
     </div>
 
     <div id="commonFields">
       <div class="row">
         <input type="checkbox" id="autoCreate">
-        <label for="autoCreate" style="margin:0">Crear el issue automáticamente al parar cada grabación con modo QA</label>
+        <label for="autoCreate" style="margin:0">Create the issue automatically when each QA-mode recording stops</label>
       </div>
-      <p class="hint">El issue se crea con el contenido de <code>.informe.md</code> como descripción. Los ficheros (vídeo, HAR…) quedan en tu carpeta de Descargas: adjúntalos al issue si hacen falta. Las credenciales se guardan solo en este navegador (chrome.storage.local); nunca salen de tu equipo salvo hacia tu propio Jira/Linear.</p>
+      <p class="hint">The issue is created with the <code>.report.md</code> content as its description. The files (video, HAR…) stay in your Downloads folder: attach them to the issue if needed. Credentials are stored only in this browser (chrome.storage.local); they never leave your machine except towards your own Jira/Linear.</p>
     </div>
 
     <div class="actions">
-      <button class="primary" id="btnSave">Guardar</button>
-      <button id="btnTest">Probar conexión</button>
+      <button class="primary" id="btnSave">Save</button>
+      <button id="btnTest">Test connection</button>
     </div>
     <div id="status"></div>
   </div>

@@ -1,7 +1,7 @@
 "use strict";
 
-// Utilidades compartidas por offscreen.js (grabación de pestaña) y
-// recorder.js (grabación de pantalla/ventana). Se carga antes que ellos.
+// Utilities shared by offscreen.js (tab recording) and recorder.js
+// (screen/window recording). Loaded before both.
 
 const QUALITY = {
   high: { frameRate: 30, videoBitsPerSecond: 8_000_000 },
@@ -32,18 +32,18 @@ function pickMime() {
 
 function humanError(e) {
   const name = e && e.name;
-  if (name === "NotAllowedError") return "permiso denegado (NotAllowedError).";
-  if (name === "NotFoundError") return "no se encontró la fuente (NotFoundError).";
-  if (name === "NotReadableError") return "la fuente está en uso o no se puede leer (NotReadableError).";
+  if (name === "NotAllowedError") return "permission denied (NotAllowedError).";
+  if (name === "NotFoundError") return "source not found (NotFoundError).";
+  if (name === "NotReadableError") return "the source is in use or unreadable (NotReadableError).";
   return (name ? name + ": " : "") + (e && e.message ? e.message : String(e));
 }
 
-// Combina audio del sistema y micrófono en una pista. Con playthrough,
-// reinyecta el audio del sistema a los altavoces (necesario al capturar
-// pestañas, porque Chrome las silencia mientras se capturan).
+// Combines system audio and microphone into one track. With playthrough,
+// it re-injects system audio into the speakers (needed when capturing
+// tabs, because Chrome mutes them while they are captured).
 function buildAudioGraph(sysTrack, micTrack, playthrough) {
   if (!sysTrack && !micTrack) return { audioTrack: null, audioCtx: null };
-  if (!sysTrack) return { audioTrack: micTrack, audioCtx: null }; // solo micro
+  if (!sysTrack) return { audioTrack: micTrack, audioCtx: null }; // mic only
 
   const ctx = new AudioContext();
   const dest = ctx.createMediaStreamDestination();

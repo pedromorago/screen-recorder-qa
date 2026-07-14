@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <style>
@@ -45,8 +45,8 @@
   .sub{font-size:11px; color:var(--muted); margin-top:2px}
   .switch{position:relative; width:42px; height:24px; flex:none}
   .switch input{position:absolute; opacity:0; width:100%; height:100%; margin:0; cursor:pointer}
-  /* El input invisible es el objetivo real del clic y del foco: los spans
-     decorativos no deben interceptar el puntero (accesibilidad). */
+  /* The invisible input is the real click and focus target: the
+     decorative spans must not intercept the pointer (accessibility). */
   .switch .track{pointer-events:none}
   .track{position:absolute; inset:0; background:#2A323D; border-radius:999px; transition:background .18s}
   .thumb{position:absolute; top:3px; left:3px; width:18px; height:18px; border-radius:50%; background:#8B95A4; transition:transform .18s, background .18s}
@@ -59,7 +59,7 @@
   }
   select:focus-visible{outline:2px solid var(--focus); outline-offset:2px}
 
-  /* Vista grabando */
+  /* Recording view */
   #recView{display:none; text-align:center; padding:14px 0 6px}
   body[data-state="recording"] #recView{display:block}
   body[data-state="recording"] #idleView{display:none}
@@ -87,63 +87,63 @@
 </style>
 </head>
 <body data-state="idle">
-  <div class="head"><span class="dot"></span> Grabador de pantalla</div>
+  <div class="head"><span class="dot"></span> Screen Recorder</div>
 
   <div class="notice" id="notice"></div>
 
   <div id="idleView">
     <div class="row">
       <div>
-        <div class="lbl">Micrófono</div>
-        <div class="sub">Incluir tu voz</div>
+        <div class="lbl">Microphone</div>
+        <div class="sub">Include your voice</div>
       </div>
       <label class="switch"><input type="checkbox" id="mic"><span class="track"><span class="thumb"></span></span></label>
     </div>
     <div class="row">
       <div>
-        <div class="lbl">Registro de consola</div>
-        <div class="sub">Logs y errores JS junto al vídeo (pestaña)</div>
+        <div class="lbl">Console log</div>
+        <div class="sub">JS logs and errors with the video (tab)</div>
       </div>
       <label class="switch"><input type="checkbox" id="consoleLog"><span class="track"><span class="thumb"></span></span></label>
     </div>
     <div class="row">
       <div>
-        <div class="lbl">Registro de red</div>
-        <div class="sub">fetch/XHR en .har; fallos, al log (pestaña)</div>
+        <div class="lbl">Network log</div>
+        <div class="sub">fetch/XHR to .har; failures to the log (tab)</div>
       </div>
       <label class="switch"><input type="checkbox" id="networkLog"><span class="track"><span class="thumb"></span></span></label>
     </div>
     <div class="row">
       <div>
-        <div class="lbl">Pasos del usuario</div>
-        <div class="sub">Clicks y navegación, sin valores (pestaña)</div>
+        <div class="lbl">User steps</div>
+        <div class="sub">Clicks and navigation, no values (tab)</div>
       </div>
       <label class="switch"><input type="checkbox" id="stepsLog"><span class="track"><span class="thumb"></span></span></label>
     </div>
     <div class="row">
       <div>
-        <div class="lbl">Calidad</div>
-        <div class="sub">Bitrate y fps</div>
+        <div class="lbl">Quality</div>
+        <div class="sub">Bitrate and fps</div>
       </div>
       <select id="quality">
-        <option value="high">Alta · 30 fps</option>
-        <option value="medium">Media · 30 fps</option>
-        <option value="light">Ligera · 15 fps</option>
+        <option value="high">High · 30 fps</option>
+        <option value="medium">Medium · 30 fps</option>
+        <option value="light">Light · 15 fps</option>
       </select>
     </div>
-    <button class="btn primary" id="btnTab">Grabar pestaña actual</button>
-    <button class="btn secondary" id="btnScreen">Grabar pantalla o ventana</button>
+    <button class="btn primary" id="btnTab">Record current tab</button>
+    <button class="btn secondary" id="btnScreen">Record screen or window</button>
   </div>
 
   <div id="recView">
     <div id="timer">00:00</div>
-    <div class="sub">Grabando. Puedes cerrar este popup y cambiar de pestaña.</div>
-    <button class="btn secondary" id="btnMarker">💥 Marcar bug aquí</button>
-    <button class="btn secondary" id="btnAnnotate">✏️ Dibujar en la página</button>
-    <button class="btn secondary" id="btnStop">Parar grabación</button>
+    <div class="sub">Recording. You can close this popup and switch tabs.</div>
+    <button class="btn secondary" id="btnMarker">💥 Mark bug here</button>
+    <button class="btn secondary" id="btnAnnotate">✏️ Draw on the page</button>
+    <button class="btn secondary" id="btnStop">Stop recording</button>
   </div>
 
-  <div class="tip" id="tip"><b>Pestaña actual</b> incluye su audio automáticamente. Para <b>pantalla o ventana</b>, marca <b>Compartir audio</b> en el selector si quieres el sonido del sistema. Atajos: <b>Ctrl/Cmd+Shift+U</b> grabar/parar · <b>K</b> marcador · <b>Y</b> dibujar. El informe puede crear un issue en Jira/Linear: configúralo en las <b>Opciones</b> de la extensión.</div>
+  <div class="tip" id="tip"><b>Current tab</b> includes its audio automatically. For <b>screen or window</b>, check <b>Share audio</b> in the picker if you want system sound. Shortcuts: <b>Ctrl/Cmd+Shift+U</b> record/stop · <b>K</b> marker · <b>Y</b> draw. The report can create a Jira/Linear issue: set it up in the extension's <b>Options</b>.</div>
 
   <script src="popup.js"></script>
 </body>

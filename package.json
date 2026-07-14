@@ -1,7 +1,7 @@
 {
   "name": "grabador-pantalla",
   "private": true,
-  "description": "Extensión Chrome MV3: grabador de pantalla con modo QA (consola, errores JS y red sincronizados con el vídeo).",
+  "description": "Chrome MV3 extension: screen recorder with QA mode (console, JS errors, network, steps and a bug report synced with the video).",
   "scripts": {
     "test:e2e": "cypress run",
     "test:e2e:chrome": "cypress run --browser chrome",

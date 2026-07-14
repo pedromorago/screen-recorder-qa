@@ -6,7 +6,7 @@ on:
 
 jobs:
   cypress:
-    name: Cypress (motor de captura QA)
+    name: Cypress (QA capture engine)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -24,7 +24,7 @@ jobs:
           if-no-files-found: ignore
 
   playwright:
-    name: Playwright (extensión real en Chromium)
+    name: Playwright (real extension in Chromium)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

@@ -1,129 +1,128 @@
-# Grabador de pantalla · modo QA
+# Screen Recorder · QA mode
 
 [![tests](https://github.com/pedro-morago/grabador-pantalla/actions/workflows/tests.yml/badge.svg)](https://github.com/pedro-morago/grabador-pantalla/actions/workflows/tests.yml)
 
-Extensión de Chrome (Manifest V3) para grabar pantalla, ventana o pestaña, pensada para reportar bugs: además del vídeo, registra la consola, los errores JS, la red y los pasos del usuario, todo sincronizado con la grabación, y lo condensa en un informe listo para pegar en un ticket. Sin límites de tiempo, sin marca de agua, sin cuenta.
+A Chrome extension (Manifest V3) that records your screen, a window or a tab, built for bug reporting: besides the video, it logs the page's console, JS errors, network and user steps — all synced with the recording — and condenses everything into a paste-ready report. No time limits, no watermark, no account.
 
-## Qué hace
+## What it does
 
-- Graba la pestaña actual con un clic, audio incluido automáticamente
-- **Modo QA**: al grabar una pestaña, captura `console.log/warn/error`, excepciones no controladas, promesas rechazadas y recursos que no cargan (404 de imágenes/scripts), cada entrada con su offset `+mm:ss.mmm` respecto al vídeo — "el error saltó en el segundo 12" deja de ser una frase y pasa a ser una línea de log
-- **Red incluida**: registra todas las peticiones `fetch`/XHR (método, URL, status, duración, headers) y las exporta en formato **HAR**, que se abre arrastrándolo a la pestaña Red de cualquier DevTools; los fallos (errores de red/CORS y 4xx/5xx) aparecen además en la línea de tiempo del log, entre los errores de consola
-- **Pasos para reproducir automáticos**: clicks (atribuidos al botón real, no al `<span>` decorativo), cambios de campo y envíos de formulario, numerados con su offset en `*.pasos.md`. Regla de privacidad: **jamás se registra el valor tecleado** — un reporte no necesita la contraseña del tester
-- **Marcadores «aquí está el bug»**: `Ctrl/Cmd+Shift+K` o el botón 💥 del popup dejan una marca con timestamp en plena grabación, que luego destaca en el informe
-- **Anotaciones sobre el vídeo**: `Ctrl/Cmd+Shift+Y` o el botón ✏️ del popup abren un lienzo de dibujo sobre la pestaña grabada (tres colores, borrar, Esc para salir). Como el trazo es DOM de la página, la captura lo graba sin tocar el pipeline de vídeo — y los gestos de dibujo no ensucian el registro de pasos
-- **Informe empaquetado** `*.informe.md`: entorno (URL, Chrome, SO, idioma, zona horaria, duración), resumen de errores JS / recursos rotos / peticiones fallidas, marcadores, errores en línea de tiempo y pasos — el ticket casi se escribe solo
-- Junto al `.webm` descarga `*.console.log` (legible), `*.console.json` (estructurado), `*.har` (red completa), `*.pasos.md` e `*.informe.md`
-- **Issue automático en Jira o Linear**: configura tus credenciales en las Opciones de la extensión (token solo en `chrome.storage.local`, botón «Probar conexión») y, al parar cada grabación, el informe se convierte en un issue nuevo — el enlace aparece en el popup. Jira Cloud vía REST (Basic auth con API token) y Linear vía GraphQL (la clave de equipo se resuelve a id automáticamente)
-- Sobrevive a navegaciones: si la pestaña cambia de página a mitad de grabación, el registro continúa y anota la URL nueva en la línea de tiempo
-- Graba pantalla completa o una ventana, con el selector nativo de Chrome
-- Micrófono opcional, mezclado con el audio capturado
-- Tres niveles de calidad (bitrate/fps)
-- Exporta a `.webm`; conversión a MP4 documentada más abajo
+- Records the current tab in one click, audio included automatically
+- **QA mode**: while recording a tab, it captures `console.log/warn/error`, uncaught exceptions, unhandled promise rejections and resources that fail to load (image/script 404s), each entry with its `+mm:ss.mmm` offset into the video — "the error popped at second 12" stops being a sentence and becomes a log line
+- **Network included**: records every `fetch`/XHR request (method, URL, status, duration, headers) and exports it as **HAR**, which opens by dragging it onto any DevTools' Network tab; failures (network/CORS errors and 4xx/5xx) also show up on the log's timeline, right between the console errors
+- **Automatic steps to reproduce**: clicks (attributed to the real button, not the decorative `<span>`), field changes and form submits, numbered with their offset in `*.steps.md`. Privacy rule: **typed values are never recorded** — a bug report doesn't need the tester's password
+- **"The bug is here" markers**: `Ctrl/Cmd+Shift+K` or the popup's 💥 button drop a timestamped mark mid-recording, highlighted later in the report
+- **On-video annotations**: `Ctrl/Cmd+Shift+Y` or the popup's ✏️ button open a drawing canvas over the recorded tab (three colors, clear, Esc to exit). Since the strokes are DOM inside the page, the capture records them without touching the video pipeline — and drawing gestures don't pollute the steps log
+- **Recording report** `*.report.md`: environment (URL, Chrome, OS, language, timezone, duration), a summary of JS errors / broken resources / failed requests, markers, timeline errors and steps — the ticket almost writes itself
+- **Automatic Jira or Linear issue**: configure your credentials in the extension's Options (token kept in `chrome.storage.local` only, "Test connection" button) and, when each recording stops, the report becomes a new issue — the link shows up in the popup. Jira Cloud via REST (Basic auth with an API token) and Linear via GraphQL (the team key is resolved to an id automatically)
+- Alongside the `.webm` it downloads `*.console.log` (readable), `*.console.json` (structured), `*.har` (full network), `*.steps.md` and `*.report.md`
+- Records the full screen or a window through Chrome's native picker
+- Optional microphone, mixed with the captured audio
+- Three quality levels (bitrate/fps)
+- Exports `.webm`; MP4 conversion documented below
 
-Ejemplo de `*.console.log`:
+Example `*.console.log`:
 
 ```
-# Registro de consola — Grabador de pantalla (modo QA)
-# Página: Checkout — https://tienda.example/checkout
-# Inicio del vídeo: 2026-07-14T11:02:41.000Z
-# 4 entradas
+# Console log — Screen Recorder (QA mode)
+# Page: Checkout — https://shop.example/checkout
+# Video start: 2026-07-14T11:02:41.000Z
+# 4 entries
 
-[+00:00.000] NAV   https://tienda.example/checkout
-[+00:07.412] WARN  stock bajo para SKU-1042
+[+00:00.000] NAV   https://shop.example/checkout
+[+00:07.412] WARN  low stock for SKU-1042
 [+00:11.951] NET   POST https://api.example/cart/total → 500 Internal Server Error (132 ms)
 [+00:12.083] ERROR TypeError: Cannot read properties of undefined (reading 'total')
-    en https://tienda.example/js/cart.js:88:17
-[+00:12.090] ERROR Recurso no cargado: <img> https://cdn.example/promo.png
+    at https://shop.example/js/cart.js:88:17
+[+00:12.090] ERROR Resource failed to load: <img> https://cdn.example/promo.png
 ```
 
-El 500 de la API y el `TypeError` que provoca, a 130 ms el uno del otro, en el mismo fichero: la causa raíz viene puesta de serie en el reporte.
+The API's 500 and the `TypeError` it causes, 130 ms apart, in the same file: the root cause ships pre-installed in the report.
 
-## Por qué existe
+## Why it exists
 
-Ejercicio de portfolio: reproducir la mecánica de herramientas como Nimbus o Loom usando solo APIs nativas del navegador, sin dependencias externas. El mercado de grabadores de pantalla está saturado y hay alternativas gratuitas mejores (Screenity, por ejemplo), así que el interés no es competir con eso. Es entender cómo se comporta Manifest V3 cuando la captura tiene que sobrevivir en segundo plano, y depurarlo con el mismo método que uso en QA: aislar el síntoma, mirar la consola, no dar nada por sentado.
+A portfolio exercise: reproduce the mechanics of tools like Nimbus or Loom using only native browser APIs, no external dependencies. The screen-recorder market is saturated and better free alternatives exist (Screenity, for one), so the point is not competing with them. The point is understanding how Manifest V3 behaves when the capture has to survive in the background, and debugging it with the same method I use in QA: isolate the symptom, read the console, take nothing for granted.
 
-## Decisiones y callejones sin salida
+## Decisions and dead ends
 
-Manifest V3 impone restricciones de seguridad que no están bien documentadas hasta que las rompes. Tres de las que más costaron:
+Manifest V3 imposes security constraints that aren't well documented until you break them. Four of the costliest:
 
-**1. El service worker no puede abrir el selector de escritorio sin `targetTab`, y con `targetTab` el resultado es inservible.**
-`chrome.desktopCapture.chooseDesktopMedia` exige una pestaña de destino si se llama desde un service worker (`A target tab is required when called from a service worker context`). Pero pasar esa pestaña ata el `streamId` resultante al origen de esa pestaña web, y ningún contexto de la extensión puede consumirlo después. La salida: el selector no vive en el service worker, vive en una ventana propia de la extensión (`recorder.html`), que además consume el `streamId` en el mismo frame que lo pidió — el único punto donde Chrome garantiza que funcione.
+**1. The service worker cannot open the desktop picker without `targetTab`, and with `targetTab` the result is useless.**
+`chrome.desktopCapture.chooseDesktopMedia` demands a target tab when called from a service worker (`A target tab is required when called from a service worker context`). But passing that tab binds the resulting `streamId` to that web page's origin, and no extension context can consume it afterwards. The way out: the picker doesn't live in the service worker, it lives in a dedicated extension window (`recorder.html`), which also consumes the `streamId` in the same frame that requested it — the only place Chrome guarantees it works.
 
-**2. Pestañas y escritorio no comparten tubería.**
-Un `streamId` de `chrome.tabCapture` solo es válido con `chromeMediaSource: "tab"`; uno del selector de escritorio, solo con `"desktop"`. Mezclarlos da `AbortError: Error starting tab capture`, sin más contexto. Son dos flujos separados: pestaña por `tabCapture.getMediaStreamId` (documento offscreen, invisible), escritorio por el selector (ventana visible que se minimiza sola mientras graba).
+**2. Tabs and desktop don't share a pipe.**
+A `chrome.tabCapture` `streamId` is only valid with `chromeMediaSource: "tab"`; one from the desktop picker, only with `"desktop"`. Mixing them yields `AbortError: Error starting tab capture`, with no further context. They are two separate flows: tab via `tabCapture.getMediaStreamId` (invisible offscreen document), desktop via the picker (a visible window that minimizes itself while recording).
 
-**3. Chrome silencia la pestaña que capturas.**
-Sin corregirlo, grabas vídeo con audio pero dejas de oír la pestaña mientras grabas. La solución reinyecta el audio capturado a los altavoces vía `AudioContext`, solo en el flujo de pestaña (en pantalla completa duplicaría el sonido del sistema).
+**3. Chrome mutes the tab you capture.**
+Without fixing it, you record video with audio but stop hearing the tab while recording. The solution re-injects the captured audio into the speakers via `AudioContext`, only in the tab flow (in full screen it would duplicate system sound).
 
-**4. Para envolver `console.*` (o `fetch`) hay que vivir en el mundo de la página, donde la extensión no existe.**
-Un content script normal corre en un mundo aislado: ve el mismo DOM pero OTRO objeto `console` y OTRO `fetch`, así que envolverlos ahí no captura nada de lo que hace la página. La captura real exige inyectar en el `world: "MAIN"`, donde a cambio no hay `chrome.runtime` para hablar con la extensión. De ahí la estructura: los scripts del mundo principal envuelven `console.*`, `fetch` y `XMLHttpRequest` y publican cada entrada con `postMessage`; un puente en el mundo aislado las agrupa y reenvía. Y las acumula el documento offscreen, no el service worker, porque el service worker puede morir a mitad de grabación y llevarse el registro consigo. Tercera trampa del mismo pozo: al navegar la pestaña, los scripts inyectados desaparecen — `tabs.onUpdated` los reinyecta en cuanto el documento nuevo empieza a cargar. Y una cuarta: los wrappers quedan instalados en la página después de parar, así que el offscreen filtra lo que llega según los interruptores de la grabación en curso, no según qué wrappers existan.
+**4. To wrap `console.*` (or `fetch`) you must live in the page's world, where the extension doesn't exist.**
+A normal content script runs in an isolated world: it sees the same DOM but ANOTHER `console` and ANOTHER `fetch`, so wrapping them there captures nothing the page does. Real capture demands injecting into `world: "MAIN"`, where in exchange there is no `chrome.runtime` to talk to the extension. Hence the structure: the MAIN-world scripts wrap `console.*`, `fetch` and `XMLHttpRequest` and publish each entry with `postMessage`; a bridge in the isolated world batches and relays them. And they accumulate in the offscreen document, not the service worker, because the service worker can die mid-recording and take the log with it. A third trap from the same pit: when the tab navigates, the injected scripts vanish — `tabs.onUpdated` re-injects them as soon as the new document starts loading. And a fourth: the wrappers stay installed in the page after stopping, so the offscreen filters what arrives by the current recording's toggles, not by which wrappers exist.
 
-El detalle técnico completo, pensado para que una sesión de Claude Code lo lea antes de tocar código, está en [`CLAUDE.md`](./CLAUDE.md).
+The full technical detail, written so a Claude Code session can read it before touching code, is in [`CLAUDE.md`](./CLAUDE.md).
 
-## Instalar
+## Install
 
-1. Clona el repo
-2. `chrome://extensions` → activa **Modo de desarrollador**
-3. **Cargar descomprimida** → selecciona la carpeta del repo
+1. Clone the repo
+2. `chrome://extensions` → enable **Developer mode**
+3. **Load unpacked** → select the repo folder
 
-## Tests E2E (Cypress + Playwright)
+## E2E tests (Cypress + Playwright)
 
 ```bash
 npm install
-npx playwright install chromium   # solo la primera vez
+npx playwright install chromium   # first time only
 
 npm run test:e2e          # Cypress headless (Electron)
-npm run test:e2e:chrome   # Cypress en Chrome, cargando además la extensión real
-npm run cypress:open      # Cypress interactivo
-npm run test:ext          # Playwright: la extensión real cargada en Chromium
-npm run test:all          # todo
+npm run test:e2e:chrome   # Cypress in Chrome, also loading the real extension
+npm run cypress:open      # Cypress interactive
+npm run test:ext          # Playwright: the real extension loaded in Chromium
+npm run test:all          # everything
 ```
 
-Dos herramientas, una capa cada una — elegir qué se testea con qué, y saber qué NO puede testear cada una, es parte de lo que este repo quiere demostrar:
+Two tools, one layer each — choosing what gets tested with which, and knowing what each one CANNOT test, is part of what this repo wants to demonstrate:
 
-**Cypress cubre el motor de captura** (`cypress/e2e/`). Los tests levantan un servidor local, cargan páginas de prueba e inyectan los **scripts reales de la extensión** (los mismos ficheros que inyecta `chrome.scripting.executeScript` en producción) y verifican el comportamiento observable:
+**Cypress covers the capture engine** (`cypress/e2e/`). The tests start a local server, load test pages, inject the **extension's real scripts** (the same files `chrome.scripting.executeScript` injects in production) and verify the observable behavior:
 
-- `console-capture.cy.js` — wrapper de consola: niveles y argumentos, excepciones, promesas rechazadas, recursos 404, objetos circulares, symbols/bigints, recorte de mensajes gigantes, guarda de doble inyección
-- `network-capture.cy.js` — wrapper de red: fetch 200/500, resolución de URLs relativas, fallos de red con status 0, XHR con headers de petición/respuesta, XHR reutilizado sin duplicados, guarda de doble inyección
-- `bridge.cy.js` — puente del mundo aislado: entrada de navegación, agrupación en lotes, vaciado inmediato a las 50 entradas
-- `reports.cy.js` — generadores de informes del offscreen: formato de offsets, filtrado por interruptores, `.console.log`/`.console.json` y validez del HAR (pages por navegación, `pageref` por timestamp, queryString)
-- `annotate.cy.js` — superficie de anotación: toggle, dibujo con píxeles verificados en el canvas, borrar, Esc, y que los gestos de dibujo no contaminan el registro de pasos
-- `issue-reporter.cy.js` — creación de issues con fetch real contra mocks de Jira/Linear que capturan la petición: auth, payload, resolución de equipo en Linear, propagación de errores HTTP
+- `console-capture.cy.js` — console wrapper: levels and arguments, exceptions, rejected promises, 404 resources, circular objects, symbols/bigints, huge-message truncation, double-injection guard
+- `network-capture.cy.js` — network wrapper: fetch 200/500, relative URL resolution, network failures with status 0, XHR with request/response headers, reused XHR without duplicates, double-injection guard
+- `bridge.cy.js` — isolated-world bridge: navigation entry, batching, immediate flush at 50 entries
+- `reports.cy.js` — offscreen report builders: offset format, toggle filtering, `.console.log`/`.console.json`, `.steps.md`, `.report.md` and HAR validity (pages per navigation, `pageref` by timestamp, queryString)
+- `annotate.cy.js` — annotation surface: toggle, drawing with pixels verified on the canvas, clear, Esc, and drawing gestures not polluting the steps log
+- `issue-reporter.cy.js` — issue creation with real fetch against Jira/Linear mocks that capture the request: auth, payload, Linear team resolution, HTTP error propagation
 
-Cypress no puede navegar a `chrome-extension://` ni hablar con el service worker, y ahí es donde entra la otra suite.
+Cypress cannot navigate to `chrome-extension://` or talk to the service worker, and that's where the other suite comes in.
 
-**Playwright cubre la extensión real** (`playwright/`): contexto persistente con `--load-extension`, acceso directo al service worker MV3 y al popup como página `chrome-extension://`:
+**Playwright covers the real extension** (`playwright/`): a persistent context with `--load-extension`, direct access to the MV3 service worker and to the popup as a `chrome-extension://` page:
 
-- el service worker registra y el manifest expone los permisos del modo QA
-- el popup arranca en idle con el modo QA activo por defecto, y sus interruptores persisten en `chrome.storage.local`
-- el popup reacciona en vivo al estado de grabación (`storage.session` + `storage.onChanged`)
-- `injectQaCapture` inyecta los wrappers reales vía `chrome.scripting` en el world MAIN, y funcionan (console y fetch publican entradas)
-- si la pestaña grabada navega, `tabs.onUpdated` reinyecta los registros
-- la anotación se activa desde el background (mismo camino que el popup y el atajo) y un trazo real del ratón pinta píxeles en el lienzo
-- las descargas se contabilizan por grupos: dos grabaciones encadenadas no se pisan la limpieza de blobs
-- con Jira configurado, el informe crea un issue desde el service worker real (contra el mock), y sin `autoCreate` no se crea nada aunque haya credenciales
-- `startTabRecording` sin gesto de usuario falla por el camino controlado: aviso en el popup y estado limpio
+- the service worker registers and the manifest exposes the QA-mode permissions
+- the popup starts idle with QA mode on by default, and its toggles persist in `chrome.storage.local`
+- the popup reacts live to the recording state (`storage.session` + `storage.onChanged`)
+- `injectQaCapture` injects the real wrappers via `chrome.scripting` into the MAIN world, and they work (console, fetch and a real click publish entries)
+- if the recorded tab navigates, `tabs.onUpdated` re-injects the logs
+- the annotation is toggled from the background (same path as the popup and the shortcut) and a real mouse stroke paints pixels on the canvas
+- downloads are tracked in groups: two chained recordings don't clobber each other's blob cleanup
+- with Jira configured, the report creates an issue from the real service worker (against the mock), and without `autoCreate` nothing is created even with credentials
+- `startTabRecording` without a user gesture fails down the controlled path: a popup notice and clean state
 
-**El único tramo no automatizado** es el corazón de la captura: `tabCapture`/`desktopCapture` exigen un gesto real del usuario sobre la extensión (clic en la barra de herramientas o selector nativo), que ningún framework puede fabricar. Ese tramo queda en el checklist manual de [`CLAUDE.md`](./CLAUDE.md) — y el test de Playwright verifica al menos que, sin ese gesto, el fallo es limpio y explicado.
+**The only stretch not automated** is the heart of the capture: `tabCapture`/`desktopCapture` require a real user gesture on the extension (a toolbar click or the native picker), which no framework can fabricate. That stretch is covered by the manual checklist in [`CLAUDE.md`](./CLAUDE.md) — and the Playwright test at least verifies that, without that gesture, the failure is clean and explained.
 
 ## Roadmap
 
-La dirección es un grabador orientado a reportes de bugs de QA. Hecho y pendiente:
+The direction is a recorder built for QA bug reports. Done and pending:
 
-- [x] Registro de consola y errores JS sincronizado con el vídeo
-- [x] Peticiones de red (`fetch`/XHR con status, duración y headers), exportadas en HAR; los fallos, también en la línea de tiempo del log
-- [x] Pasos para reproducir generados automáticamente (clicks, campos y formularios con timestamp, sin valores)
-- [x] Informe empaquetado: entorno + resumen + marcadores + errores + pasos, listo para pegar en Jira o Linear
-- [x] Marcadores durante la grabación («aquí está el bug») con atajo de teclado y botón en el popup
-- [x] Tests E2E en dos capas (Cypress + Playwright) con CI en GitHub Actions
-- [x] Anotaciones sobre el vídeo durante la grabación (lienzo DOM sobre la pestaña: la captura lo graba gratis)
-- [x] Subida directa del informe a Jira/Linear vía API, con página de opciones y prueba de conexión
-- [ ] Adjuntar automáticamente los ficheros (vídeo, HAR) al issue creado
-- [ ] Port a Firefox (WebExtensions: `browser.*`, sin offscreen documents)
+- [x] Console and JS error log synced with the video
+- [x] Network requests (`fetch`/XHR with status, duration and headers), exported as HAR; failures also on the log's timeline
+- [x] Automatically generated steps to reproduce (clicks, fields and forms with timestamps, no values)
+- [x] Packaged report: environment + summary + markers + errors + steps, paste-ready for Jira or Linear
+- [x] Mid-recording markers ("the bug is here") with a keyboard shortcut and a popup button
+- [x] Two-layer E2E tests (Cypress + Playwright) with CI on GitHub Actions
+- [x] On-video annotations while recording (a DOM canvas over the tab: the capture records it for free)
+- [x] Direct report upload to Jira/Linear via API, with an options page and connection test
+- [ ] Automatically attach the files (video, HAR) to the created issue
+- [ ] Firefox port (WebExtensions: `browser.*`, no offscreen documents)
 
-Los registros QA solo aplican al flujo de pestaña (una grabación de pantalla completa no tiene una pestaña asociada de la que leer) y a páginas `http(s)`.
+QA logs only apply to the tab flow (a full-screen recording has no associated tab to read from) and to `http(s)` pages.
 
-## Licencia
+## License
 
-MIT. Ver [`LICENSE`](./LICENSE).
+MIT. See [`LICENSE`](./LICENSE).

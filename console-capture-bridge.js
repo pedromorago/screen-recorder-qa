@@ -1,11 +1,11 @@
 "use strict";
 
-// Se inyecta en el mundo AISLADO de la pestaña grabada, junto con
-// console-capture-main.js y/o network-capture-main.js (mundo principal).
-// Recoge las entradas que aquellos publican con postMessage, las agrupa en
-// lotes y las envía al documento offscreen, que es quien las acumula (el
-// service worker puede morir a mitad de grabación; el offscreen vive
-// mientras se graba).
+// Injected into the ISOLATED world of the recorded tab, together with
+// console-capture-main.js and/or network-capture-main.js (MAIN world).
+// It collects the entries those scripts publish with postMessage, groups
+// them into batches and sends them to the offscreen document, which is
+// where they accumulate (the service worker can die mid-recording; the
+// offscreen document lives for as long as the recording does).
 
 (() => {
   if (window.__qaRecorderBridgeInstalled) return;
@@ -31,7 +31,7 @@
         .sendMessage({ target: "offscreen", type: "off:consoleEntries", entries })
         .catch(() => {});
     } catch (e) {
-      /* contexto de extensión invalidado (extensión recargada): se ignora */
+      /* extension context invalidated (extension reloaded): ignore */
     }
   }
 
@@ -47,10 +47,10 @@
     buf.length >= FLUSH_AT ? flush() : schedule();
   });
 
-  // Marca de navegación: sitúa cada página en la línea de tiempo del vídeo.
+  // Navigation mark: places each page on the video's timeline.
   buf.push({ kind: "nav", level: "info", t: Date.now(), text: location.href });
   schedule();
 
-  // Último vaciado antes de que la página se descargue.
+  // One last flush before the page unloads.
   window.addEventListener("pagehide", flush);
 })();

@@ -1,10 +1,10 @@
 "use strict";
 
-// Se inyecta en el MUNDO PRINCIPAL (world: "MAIN") de la pestaña grabada.
-// Envuelve fetch y XMLHttpRequest para el registro de red que acompaña al
-// vídeo (export HAR). Igual que console-capture-main.js, aquí no existe
-// chrome.runtime: publica con postMessage y console-capture-bridge.js
-// reenvía a la extensión.
+// Injected into the MAIN world (world: "MAIN") of the recorded tab. Wraps
+// fetch and XMLHttpRequest for the network log that ships alongside the
+// video (HAR export). Like console-capture-main.js, chrome.runtime does
+// not exist here: entries are published with postMessage and
+// console-capture-bridge.js relays them to the extension.
 
 (() => {
   if (window.__qaRecorderNetInstalled) return;
@@ -19,7 +19,7 @@
     try {
       window.postMessage({ [MARK]: entry }, "*");
     } catch (e) {
-      /* página cerrándose: se descarta */
+      /* page tearing down: drop it */
     }
   }
 
@@ -29,7 +29,7 @@
     return isNaN(n) ? -1 : n;
   };
 
-  // Headers (objeto Headers) → [{name, value}], acotado.
+  // Headers object → [{name, value}], bounded.
   function headersToArray(h) {
     const out = [];
     try {
@@ -38,12 +38,12 @@
         out.push({ name, value: clip(String(value), MAX_HEADER_VALUE) });
       }
     } catch (e) {
-      /* headers no iterables */
+      /* non-iterable headers */
     }
     return out;
   }
 
-  // getAllResponseHeaders() (texto plano) → [{name, value}], acotado.
+  // getAllResponseHeaders() (raw text) → [{name, value}], bounded.
   function parseRawHeaders(raw) {
     const out = [];
     for (const line of String(raw || "").trim().split(/[\r\n]+/)) {
@@ -62,7 +62,7 @@
     net.url = clip(String(net.url || ""), MAX_URL);
     const failed = !!net.error || net.status >= 400;
     const outcome = net.error
-      ? "FALLO: " + net.error
+      ? "FAILED: " + net.error
       : net.status + (net.statusText ? " " + net.statusText : "");
     post({
       kind: "net",
@@ -93,13 +93,13 @@
           try {
             url = new URL(url, location.href).href;
           } catch (err) {
-            /* URL imposible de resolver: se registra tal cual */
+            /* unresolvable URL: record it as-is */
           }
         }
         if (init && init.method) method = init.method;
         if (init && init.headers) requestHeaders = headersToArray(new Headers(init.headers));
       } catch (e) {
-        /* argumentos exóticos: se registra lo que haya */
+        /* exotic arguments: record what we have */
       }
       method = String(method).toUpperCase();
 
@@ -114,7 +114,7 @@
             contentType = res.headers.get("content-type") || "";
             contentLength = int(res.headers.get("content-length"));
           } catch (e) {
-            /* respuesta opaca (no-cors) */
+            /* opaque response (no-cors) */
           }
           report(t0, {
             initiator: "fetch",
@@ -163,7 +163,7 @@
       try {
         abs = new URL(url, location.href).href;
       } catch (e) {
-        /* URL relativa rara: se deja tal cual */
+        /* odd relative URL: keep it as-is */
       }
       this.__qaNet = {
         method: String(method || "GET").toUpperCase(),
@@ -188,8 +188,8 @@
       const info = this.__qaNet;
       if (info) {
         const t0 = Date.now();
-        // once: un XHR reutilizado (open/send repetidos) añadiría un
-        // listener por send y duplicaría entradas con tiempos falsos.
+        // once: a reused XHR (repeated open/send) would add one listener
+        // per send and duplicate entries with bogus timings.
         this.addEventListener("loadend", () => {
           let responseHeaders = [];
           let contentType = "";
@@ -199,9 +199,9 @@
             contentType = this.getResponseHeader("content-type") || "";
             contentLength = int(this.getResponseHeader("content-length"));
           } catch (e) {
-            /* respuesta inaccesible */
+            /* inaccessible response */
           }
-          // status 0 = la petición no llegó a resolverse (red, CORS, abort).
+          // status 0 = the request never resolved (network, CORS, abort).
           report(t0, {
             initiator: "xhr",
             url: info.url,
@@ -213,7 +213,7 @@
             responseHeaders,
             contentType,
             contentLength,
-            error: this.status === 0 ? "sin respuesta (red, CORS o abort)" : "",
+            error: this.status === 0 ? "no response (network, CORS or abort)" : "",
           });
         }, { once: true });
       }

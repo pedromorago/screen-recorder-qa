@@ -1,8 +1,8 @@
 "use strict";
 
-// Documento offscreen: graba la PESTAÑA actual a partir del streamId de
-// chrome.tabCapture. La grabación de pantalla/ventana vive en recorder.js.
-// Requiere capture-common.js cargado antes.
+// Offscreen document: records the current TAB from a chrome.tabCapture
+// streamId. Screen/window recording lives in recorder.js.
+// Requires capture-common.js to be loaded first.
 
 const log = (...a) => console.log("[offscreen]", ...a);
 
@@ -13,8 +13,8 @@ let micStream = null;
 let audioCtx = null;
 let blobUrls = [];
 
-// Registros QA (consola y red). Se acumulan aquí y no en el service worker
-// porque este documento vive toda la grabación y el SW puede morir.
+// QA logs (console and network). They accumulate here and not in the
+// service worker: this document lives for the whole recording, the SW can die.
 const MAX_QA_ENTRIES = 10_000;
 let consoleEnabled = false;
 let networkEnabled = false;
@@ -26,9 +26,9 @@ let videoStartTime = null;
 
 const anyQaEnabled = () => consoleEnabled || networkEnabled || stepsEnabled;
 
-// Los wrappers quedan instalados en la página entre grabaciones (ver
-// CLAUDE.md), así que puede llegar de todo: se filtra por tipo según los
-// interruptores de ESTA grabación.
+// Wrappers stay installed in the page between recordings (see CLAUDE.md),
+// so anything can arrive: filter by kind according to THIS recording's
+// toggles.
 function acceptsEntry(e) {
   if (!e || typeof e !== "object") return false;
   if (e.kind === "net") return networkEnabled;
@@ -41,7 +41,7 @@ function toBackground(type, extra) {
   chrome.runtime.sendMessage({ target: "background", type, ...extra });
 }
 
-// ---------- Mensajes ----------
+// ---------- Messages ----------
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg || msg.target !== "offscreen") return false;
@@ -50,11 +50,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     start(msg)
       .then(() => sendResponse({ ok: true }))
       .catch((e) => {
-        log("error al iniciar:", e);
+        log("failed to start:", e);
         cleanupStreams();
         sendResponse({ ok: false, error: humanError(e) });
       });
-    return true; // respuesta asíncrona
+    return true; // async response
   }
 
   if (msg.type === "off:stop") {
@@ -69,27 +69,27 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       URL.revokeObjectURL(url);
       blobUrls = blobUrls.filter((u) => u !== url);
     }
-    if (urls.length) log("blobs revocados tras la descarga:", urls.length);
+    if (urls.length) log("blobs revoked after download:", urls.length);
     sendResponse({ ok: true });
     return false;
   }
 
-  // Marcador de bug (atajo o botón del popup, vía background).
+  // Bug marker (keyboard shortcut or popup button, via the background).
   if (msg.type === "off:marker") {
     if (anyQaEnabled() && recorder && qaEntries.length < MAX_QA_ENTRIES) {
       qaEntries.push({
         kind: "marker",
         level: "warn",
         t: msg.t || Date.now(),
-        text: "Marcador del usuario: aquí está el bug",
+        text: "User marker: the bug is here",
       });
-      log("marcador añadido");
+      log("marker added");
     }
     sendResponse({ ok: true });
     return false;
   }
 
-  // Lotes de entradas desde console-capture-bridge.js (pestaña grabada).
+  // Entry batches from console-capture-bridge.js (the recorded tab).
   if (msg.type === "off:consoleEntries") {
     if (recorder && Array.isArray(msg.entries)) {
       for (const e of msg.entries) {
@@ -108,7 +108,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   return false;
 });
 
-// ---------- Captura de pestaña ----------
+// ---------- Tab capture ----------
 
 async function start({ streamId, systemAudio, mic, quality, consoleCapture, networkCapture, stepsCapture, tabUrl, tabTitle }) {
   const q = QUALITY[quality] || QUALITY.medium;
@@ -121,7 +121,7 @@ async function start({ streamId, systemAudio, mic, quality, consoleCapture, netw
   qaEntries = [];
   qaDropped = 0;
 
-  // streamId de tabCapture: se consume como chromeMediaSource "tab".
+  // A tabCapture streamId is consumed with chromeMediaSource "tab".
   displayStream = await navigator.mediaDevices.getUserMedia({
     audio: systemAudio
       ? { mandatory: { chromeMediaSource: "tab", chromeMediaSourceId: streamId } }
@@ -134,9 +134,9 @@ async function start({ streamId, systemAudio, mic, quality, consoleCapture, netw
       },
     },
   });
-  log("captura obtenida:", displayStream.getTracks().map((t) => t.kind + " · " + t.label));
+  log("capture obtained:", displayStream.getTracks().map((t) => t.kind + " · " + t.label));
 
-  // Micrófono, opcional. Si falla, se sigue grabando y se avisa.
+  // Microphone, optional. If it fails, keep recording and warn.
   let micTrack = null;
   if (mic) {
     try {
@@ -144,14 +144,14 @@ async function start({ streamId, systemAudio, mic, quality, consoleCapture, netw
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
       micTrack = micStream.getAudioTracks()[0];
-      log("micrófono:", micTrack.label);
+      log("microphone:", micTrack.label);
     } catch (e) {
-      log("micrófono no disponible:", e.name, e.message);
+      log("microphone unavailable:", e.name, e.message);
       toBackground("sw:warn", {
         message:
-          "Grabando sin micrófono: " +
+          "Recording without microphone: " +
           humanError(e) +
-          " Concede el permiso desde el popup (interruptor de micrófono).",
+          " Grant the permission from the popup (microphone toggle).",
       });
     }
   }
@@ -160,11 +160,11 @@ async function start({ streamId, systemAudio, mic, quality, consoleCapture, netw
   const sysTrack = displayStream.getAudioTracks()[0] || null;
   if (systemAudio && !sysTrack) {
     toBackground("sw:warn", {
-      message: "Chrome no entregó la pista de audio de la pestaña; se graba sin ella.",
+      message: "Chrome did not deliver the tab's audio track; recording without it.",
     });
   }
 
-  // Chrome silencia la pestaña capturada: playthrough siempre.
+  // Chrome mutes the captured tab: always play audio through.
   const graph = buildAudioGraph(sysTrack, micTrack, true);
   audioCtx = graph.audioCtx;
   const combined = new MediaStream(
@@ -172,7 +172,7 @@ async function start({ streamId, systemAudio, mic, quality, consoleCapture, netw
   );
 
   videoTrack.addEventListener("ended", () => {
-    log("captura finalizada por el usuario");
+    log("capture ended by the user");
     stop();
   });
 
@@ -189,14 +189,14 @@ async function start({ streamId, systemAudio, mic, quality, consoleCapture, netw
   };
   recorder.onstop = finalize;
   recorder.onerror = (e) => {
-    const detail = (e.error && e.error.message) || "desconocido";
+    const detail = (e.error && e.error.message) || "unknown";
     log("MediaRecorder error:", detail);
-    toBackground("sw:error", { message: "Error del grabador: " + detail });
+    toBackground("sw:error", { message: "Recorder error: " + detail });
     cleanupStreams();
   };
   recorder.start(1000);
-  videoStartTime = Date.now(); // t0 de los offsets del registro de consola
-  log("grabando con", recorder.mimeType || "codec por defecto");
+  videoStartTime = Date.now(); // t0 for the QA log offsets
+  log("recording with", recorder.mimeType || "default codec");
 }
 
 function stop() {
@@ -204,21 +204,21 @@ function stop() {
 }
 
 function finalize() {
-  log("finalizando;", chunks.length, "fragmentos");
+  log("finalizing;", chunks.length, "chunks");
   const type = (recorder && recorder.mimeType) || "video/webm";
   const blob = new Blob(chunks, { type });
   chunks = [];
-  // OJO: aquí NO se revocan los blobs anteriores. Si el usuario encadena
-  // grabaciones, las descargas de la anterior pueden seguir en vuelo y
-  // revocar su URL las interrumpe. Cada grupo se revoca en off:cleanup
-  // cuando el background confirma que TODAS sus descargas terminaron.
+  // NOTE: previous blobs are NOT revoked here. If the user chains
+  // recordings, the previous recording's downloads may still be in flight
+  // and revoking their URLs would interrupt them. Each group is revoked in
+  // off:cleanup once the background confirms ALL its downloads finished.
 
-  const name = `grabacion-${stamp()}`;
-  const base = `grabaciones-pantalla/${name}`;
+  const name = `recording-${stamp()}`;
+  const base = `screen-recordings/${name}`;
   const durationMs = videoStartTime ? Date.now() - videoStartTime : 0;
   const files = [{ url: track(blob), filename: `${base}.webm`, bytes: blob.size }];
 
-  // El puente puede haber enviado lotes desordenados: orden estable por t.
+  // The bridge may have sent batches out of order: stable sort by t.
   qaEntries.sort((a, b) => a.t - b.t);
 
   if (consoleEnabled) {
@@ -237,30 +237,30 @@ function finalize() {
   if (stepsEnabled) {
     files.push({
       url: track(new Blob([buildStepsReport()], { type: "text/markdown" })),
-      filename: `${base}.pasos.md`,
+      filename: `${base}.steps.md`,
     });
   }
-  let informeMsg = null;
+  let reportMsg = null;
   if (anyQaEnabled()) {
-    // El informe se genera el último: lista los nombres del resto.
-    const informe = buildInformeReport(
+    // The report is generated last: it lists the other file names.
+    const report = buildRecordingReport(
       name,
       durationMs,
-      files.map((f) => f.filename.split("/").pop()).concat(`${name}.informe.md`)
+      files.map((f) => f.filename.split("/").pop()).concat(`${name}.report.md`)
     );
     files.push({
-      url: track(new Blob([informe], { type: "text/markdown" })),
-      filename: `${base}.informe.md`,
+      url: track(new Blob([report], { type: "text/markdown" })),
+      filename: `${base}.report.md`,
     });
-    // Para el issue en Jira/Linear (si está configurado en el background).
-    informeMsg = {
+    // For the Jira/Linear issue (if configured; handled by the background).
+    reportMsg = {
       title: "[QA Recorder] " + (qaMeta.title || qaMeta.url || name),
-      text: informe,
+      text: report,
     };
-    log("registros QA:", qaEntries.length, "entradas");
+    log("QA logs:", qaEntries.length, "entries");
   }
 
-  toBackground("sw:complete", { from: "offscreen", files, bytes: blob.size, informe: informeMsg });
+  toBackground("sw:complete", { from: "offscreen", files, bytes: blob.size, report: reportMsg });
   consoleEnabled = networkEnabled = stepsEnabled = false;
   cleanupStreams();
 }
@@ -271,9 +271,9 @@ function track(blob) {
   return url;
 }
 
-// ---------- Registros QA: ficheros de salida ----------
+// ---------- QA logs: output files ----------
 
-// Offset respecto al inicio del vídeo, como "+mm:ss.mmm".
+// Offset relative to the video start, as "+mm:ss.mmm".
 function offset(t) {
   const ms = Math.max(0, t - (videoStartTime || t));
   const m = Math.floor(ms / 60000);
@@ -284,22 +284,22 @@ function offset(t) {
 const isNetFailure = (e) =>
   e.kind === "net" && !!(e.net && (e.net.error || e.net.status >= 400));
 
-// .console.log (texto) y .console.json. En el texto, la red aparece solo
-// cuando falla: la línea de tiempo del bug sin el ruido de la red sana,
-// que ya está completa en el .har.
+// .console.log (text) and .console.json. In the text file, network shows
+// up only when it failed: the bug's timeline without healthy-network
+// noise, which is already complete in the .har.
 function buildConsoleReport() {
   const startedAt = new Date(videoStartTime || Date.now()).toISOString();
   const textEntries = qaEntries.filter((e) => e.kind !== "net" || isNetFailure(e));
   const jsonEntries = qaEntries.filter((e) => e.kind !== "net");
 
   const header =
-    "# Registro de consola — Grabador de pantalla (modo QA)\n" +
-    `# Página: ${qaMeta.title || "(sin título)"} — ${qaMeta.url}\n` +
-    `# Inicio del vídeo: ${startedAt}\n` +
-    `# Navegador: ${navigator.userAgent}\n` +
-    `# ${textEntries.length} entradas` +
-    (qaDropped ? ` (${qaDropped} descartadas por límite)` : "") +
-    (networkEnabled ? " · red completa en el .har adjunto" : "") +
+    "# Console log — Screen Recorder (QA mode)\n" +
+    `# Page: ${qaMeta.title || "(untitled)"} — ${qaMeta.url}\n` +
+    `# Video start: ${startedAt}\n` +
+    `# Browser: ${navigator.userAgent}\n` +
+    `# ${textEntries.length} entries` +
+    (qaDropped ? ` (${qaDropped} dropped due to limit)` : "") +
+    (networkEnabled ? " · full network in the attached .har" : "") +
     "\n\n";
 
   const label = (e) =>
@@ -313,7 +313,7 @@ function buildConsoleReport() {
     header +
     (textEntries.length
       ? textEntries.map((e) => `[${offset(e.t)}] ${label(e).padEnd(5)} ${e.text}`).join("\n") + "\n"
-      : "(sin entradas de consola durante la grabación)\n");
+      : "(no console entries during the recording)\n");
 
   const json = JSON.stringify(
     {
@@ -325,7 +325,7 @@ function buildConsoleReport() {
         entries: jsonEntries.length,
         dropped: qaDropped,
       },
-      // offsetMs: milisegundos desde el inicio del vídeo.
+      // offsetMs: milliseconds since the video start.
       entries: jsonEntries.map((e) => ({
         offsetMs: Math.max(0, e.t - (videoStartTime || e.t)),
         offset: offset(e.t),
@@ -341,107 +341,107 @@ function buildConsoleReport() {
   return { text, json };
 }
 
-// .pasos.md: lista numerada de navegaciones, pasos del usuario y
-// marcadores, con su offset. Pegable tal cual en un ticket.
+// .steps.md: numbered list of navigations, user steps and markers, each
+// with its offset. Paste-ready for a ticket.
 function buildStepsReport() {
-  const pasos = qaEntries.filter(
+  const steps = qaEntries.filter(
     (e) => e.kind === "step" || e.kind === "nav" || e.kind === "marker"
   );
   const header =
-    `# Pasos para reproducir — ${qaMeta.title || qaMeta.url || "grabación"}\n\n` +
-    `Grabación iniciada el ${new Date(videoStartTime || Date.now()).toISOString()} en ${qaMeta.url}\n` +
-    "Los offsets son relativos al inicio del vídeo. Los valores tecleados por el usuario NO se registran.\n\n";
+    `# Steps to reproduce — ${qaMeta.title || qaMeta.url || "recording"}\n\n` +
+    `Recording started at ${new Date(videoStartTime || Date.now()).toISOString()} on ${qaMeta.url}\n` +
+    "Offsets are relative to the video start. Values typed by the user are NEVER recorded.\n\n";
 
-  if (!pasos.length) return header + "(sin pasos registrados durante la grabación)\n";
+  if (!steps.length) return header + "(no steps recorded during the recording)\n";
 
   return (
     header +
-    pasos
+    steps
       .map((e, i) => {
-        const texto =
-          e.kind === "nav" ? `Ir a ${e.text}` : e.kind === "marker" ? `💥 ${e.text}` : e.text;
-        return `${i + 1}. [${offset(e.t)}] ${texto}`;
+        const text =
+          e.kind === "nav" ? `Go to ${e.text}` : e.kind === "marker" ? `💥 ${e.text}` : e.text;
+        return `${i + 1}. [${offset(e.t)}] ${text}`;
       })
       .join("\n") +
     "\n"
   );
 }
 
-// .informe.md: el resumen ejecutivo de la grabación (entorno, contadores,
-// marcadores, errores y pasos), listo para pegar en Jira/Linear.
-function buildInformeReport(name, durationMs, fileNames) {
+// .report.md: the recording's executive summary (environment, counters,
+// markers, errors and steps), paste-ready for Jira/Linear.
+function buildRecordingReport(name, durationMs, fileNames) {
   const fmtDur = (ms) => {
     const s = Math.round(ms / 1000);
     const h = Math.floor(s / 3600);
     return (h ? pad(h) + ":" : "") + `${pad(Math.floor(s / 60) % 60)}:${pad(s % 60)}`;
   };
-  const chrome_ = (navigator.userAgent.match(/Chrome\/([\d.]+)/) || [])[1] || "?";
+  const chromeVersion = (navigator.userAgent.match(/Chrome\/([\d.]+)/) || [])[1] || "?";
   const count = (fn) => qaEntries.filter(fn).length;
 
-  const erroresJs = count((e) => e.kind === "exception" || e.kind === "rejection");
-  const recursos = count((e) => e.kind === "resource");
-  const redTotal = count((e) => e.kind === "net");
-  const redFallida = count(isNetFailure);
-  const marcadores = qaEntries.filter((e) => e.kind === "marker");
-  const pasos = count((e) => e.kind === "step");
-  const errores = qaEntries.filter((e) => e.level === "error");
+  const jsErrors = count((e) => e.kind === "exception" || e.kind === "rejection");
+  const resources = count((e) => e.kind === "resource");
+  const netTotal = count((e) => e.kind === "net");
+  const netFailed = count(isNetFailure);
+  const markers = qaEntries.filter((e) => e.kind === "marker");
+  const steps = count((e) => e.kind === "step");
+  const errors = qaEntries.filter((e) => e.level === "error");
 
-  const lineas = [];
-  lineas.push(`# Informe de grabación QA — ${qaMeta.title || "(sin título)"}`);
-  lineas.push("");
-  lineas.push("## Entorno");
-  lineas.push("");
-  lineas.push(`- URL: ${qaMeta.url}`);
-  lineas.push(`- Inicio: ${new Date(videoStartTime || Date.now()).toISOString()}`);
-  lineas.push(`- Duración: ${fmtDur(durationMs)}`);
-  lineas.push(`- Chrome: ${chrome_} · SO: ${navigator.platform}`);
-  lineas.push(`- Idioma: ${navigator.language} · Zona horaria: ${Intl.DateTimeFormat().resolvedOptions().timeZone}`);
-  lineas.push(`- User agent: ${navigator.userAgent}`);
-  lineas.push("");
-  lineas.push("## Resumen");
-  lineas.push("");
-  lineas.push(`- Errores JS (excepciones y promesas rechazadas): ${erroresJs}`);
-  lineas.push(`- Recursos que no cargaron: ${recursos}`);
-  lineas.push(`- Peticiones fallidas: ${redFallida} de ${redTotal} registradas`);
-  lineas.push(`- Marcadores del usuario: ${marcadores.length}`);
-  lineas.push(`- Pasos registrados: ${pasos}`);
-  if (qaDropped) lineas.push(`- Entradas descartadas por límite: ${qaDropped}`);
+  const lines = [];
+  lines.push(`# QA recording report — ${qaMeta.title || "(untitled)"}`);
+  lines.push("");
+  lines.push("## Environment");
+  lines.push("");
+  lines.push(`- URL: ${qaMeta.url}`);
+  lines.push(`- Started: ${new Date(videoStartTime || Date.now()).toISOString()}`);
+  lines.push(`- Duration: ${fmtDur(durationMs)}`);
+  lines.push(`- Chrome: ${chromeVersion} · OS: ${navigator.platform}`);
+  lines.push(`- Language: ${navigator.language} · Timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone}`);
+  lines.push(`- User agent: ${navigator.userAgent}`);
+  lines.push("");
+  lines.push("## Summary");
+  lines.push("");
+  lines.push(`- JS errors (exceptions and unhandled rejections): ${jsErrors}`);
+  lines.push(`- Resources that failed to load: ${resources}`);
+  lines.push(`- Failed requests: ${netFailed} of ${netTotal} recorded`);
+  lines.push(`- User markers: ${markers.length}`);
+  lines.push(`- Steps recorded: ${steps}`);
+  if (qaDropped) lines.push(`- Entries dropped due to limit: ${qaDropped}`);
 
-  if (marcadores.length) {
-    lineas.push("");
-    lineas.push("## Marcadores («aquí está el bug»)");
-    lineas.push("");
-    for (const m of marcadores) lineas.push(`- [${offset(m.t)}] 💥 ${m.text}`);
+  if (markers.length) {
+    lines.push("");
+    lines.push('## Markers ("the bug is here")');
+    lines.push("");
+    for (const m of markers) lines.push(`- [${offset(m.t)}] 💥 ${m.text}`);
   }
 
-  if (errores.length) {
-    lineas.push("");
-    lineas.push("## Errores en la línea de tiempo");
-    lineas.push("");
-    for (const e of errores.slice(0, 50)) {
-      lineas.push(`- [${offset(e.t)}] ${e.text.split("\n")[0]}`);
+  if (errors.length) {
+    lines.push("");
+    lines.push("## Timeline errors");
+    lines.push("");
+    for (const e of errors.slice(0, 50)) {
+      lines.push(`- [${offset(e.t)}] ${e.text.split("\n")[0]}`);
     }
-    if (errores.length > 50) lineas.push(`- … y ${errores.length - 50} más (ver .console.log)`);
+    if (errors.length > 50) lines.push(`- … and ${errors.length - 50} more (see .console.log)`);
   }
 
-  lineas.push("");
-  lineas.push("## Ficheros de esta grabación");
-  lineas.push("");
-  for (const f of fileNames) lineas.push(`- ${f}`);
-  lineas.push("");
-  return lineas.join("\n");
+  lines.push("");
+  lines.push("## Files in this recording");
+  lines.push("");
+  for (const f of fileNames) lines.push(`- ${f}`);
+  lines.push("");
+  return lines.join("\n");
 }
 
-// HAR 1.2 con todas las peticiones fetch/XHR. Las navegaciones de la
-// grabación se convierten en "pages", y cada petición se cuelga de la
-// página vigente cuando arrancó.
+// HAR 1.2 with every fetch/XHR request. Navigations during the recording
+// become the "pages", and each request hangs off the page that was current
+// when it started.
 function buildHar() {
   const navs = qaEntries.filter((e) => e.kind === "nav");
   const nets = qaEntries.filter((e) => e.kind === "net");
 
   const pageMarks = navs.length
     ? navs.map((n) => ({ t: n.t, title: n.text }))
-    : [{ t: videoStartTime || Date.now(), title: qaMeta.url || "(desconocida)" }];
+    : [{ t: videoStartTime || Date.now(), title: qaMeta.url || "(unknown)" }];
 
   const pages = pageMarks.map((p, i) => ({
     startedDateTime: new Date(p.t).toISOString(),
@@ -462,7 +462,7 @@ function buildHar() {
     try {
       queryString = [...new URL(n.url).searchParams].map(([name, value]) => ({ name, value }));
     } catch (err) {
-      /* URL truncada o inválida */
+      /* truncated or invalid URL */
     }
     return {
       pageref: pageref(e.t),
@@ -495,7 +495,7 @@ function buildHar() {
       cache: {},
       timings: { blocked: -1, dns: -1, connect: -1, ssl: -1, send: 0, wait: n.durationMs || 0, receive: 0 },
       comment:
-        (n.initiator || "") + (n.error ? " · fallo: " + n.error : ""),
+        (n.initiator || "") + (n.error ? " · failed: " + n.error : ""),
     };
   });
 
@@ -504,7 +504,7 @@ function buildHar() {
       log: {
         version: "1.2",
         creator: {
-          name: "Grabador de pantalla (modo QA)",
+          name: "Screen Recorder (QA mode)",
           version: chrome.runtime.getManifest().version,
         },
         pages,

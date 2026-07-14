@@ -4,8 +4,8 @@ const { defineConfig } = require("@playwright/test");
 
 module.exports = defineConfig({
   testDir: "./playwright",
-  // Un solo worker: todos los tests comparten el puerto del servidor
-  // estático y cada test levanta su propio contexto persistente.
+  // Single worker: every test shares the static server's port and each
+  // test launches its own persistent context.
   workers: 1,
   timeout: 30_000,
   reporter: "list",

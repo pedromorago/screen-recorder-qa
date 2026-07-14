@@ -10,9 +10,9 @@ module.exports = defineConfig({
     supportFile: "cypress/support/e2e.js",
     video: false,
     setupNodeEvents(on, config) {
-      // En Chrome/Chromium se carga además la extensión real: los tests no
-      // dependen de ella (inyectan los scripts a mano, ver README), pero
-      // así el entorno se parece al de producción. Electron la ignora.
+      // In Chrome/Chromium the real extension is loaded too: the tests do
+      // not depend on it (they inject the scripts by hand, see README), but
+      // the environment resembles production this way. Electron ignores it.
       on("before:browser:launch", (browser, launchOptions) => {
         if (browser.family === "chromium" && browser.name !== "electron") {
           launchOptions.args.push(

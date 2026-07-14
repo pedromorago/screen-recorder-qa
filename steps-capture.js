@@ -1,13 +1,13 @@
 "use strict";
 
-// Se inyecta en el mundo AISLADO de la pestaña grabada: los pasos del
-// usuario (clicks, cambios de campo, envíos de formulario) se ven igual
-// desde cualquier mundo, así que no hace falta world MAIN. Publica por el
-// mismo canal postMessage que los scripts MAIN y console-capture-bridge.js
-// lo reenvía al offscreen.
+// Injected into the ISOLATED world of the recorded tab: user steps
+// (clicks, field changes, form submits) look the same from any world, so
+// no MAIN world is needed. It publishes through the same postMessage
+// channel as the MAIN-world scripts and console-capture-bridge.js relays
+// everything to the offscreen document.
 //
-// PRIVACIDAD: nunca se registra el VALOR de un campo, solo qué campo
-// cambió. Un reporte de bug no necesita la contraseña del tester.
+// PRIVACY: a field's VALUE is never recorded, only which field changed.
+// A bug report does not need the tester's password.
 
 (() => {
   if (window.__qaRecorderStepsInstalled) return;
@@ -23,15 +23,15 @@
         "*"
       );
     } catch (e) {
-      /* página cerrándose */
+      /* page tearing down */
     }
   }
 
   const clip = (s) => (s.length > MAX_LABEL ? s.slice(0, MAX_LABEL) + "…" : s);
 
-  // Descripción de un elemento SIN su valor: <button#enviar «Enviar»>.
+  // Description of an element WITHOUT its value: <button#send «Send»>.
   function describeEl(el) {
-    if (!el || !el.tagName) return "(elemento desconocido)";
+    if (!el || !el.tagName) return "(unknown element)";
     const tag = el.tagName.toLowerCase();
     let ident = "";
     if (el.id) ident = "#" + el.id;
@@ -40,8 +40,9 @@
     else if (el.classList && el.classList.length) ident = "." + el.classList[0];
 
     const isField = tag === "input" || tag === "textarea" || tag === "select";
-    // textContent pre-recortado y no innerText: innerText fuerza layout y
-    // en un click sobre un contenedor grande costaría un reflujo entero.
+    // Pre-sliced textContent rather than innerText: innerText forces
+    // layout, and on a click over a large container that would cost a
+    // full reflow.
     const label = clip(
       (
         (el.getAttribute && el.getAttribute("aria-label")) ||
@@ -52,17 +53,17 @@
         .trim()
         .replace(/\s+/g, " ")
     );
-    const tipo = isField && el.type ? " tipo=" + el.type : "";
-    return "<" + tag + ident + tipo + (label ? " «" + label + "»" : "") + ">";
+    const type = isField && el.type ? " type=" + el.type : "";
+    return "<" + tag + ident + type + (label ? " «" + label + "»" : "") + ">";
   }
 
-  // Click: se atribuye al elemento interactivo más cercano, no al span
-  // decorativo donde cayó el puntero.
+  // Click: attributed to the closest interactive element, not to the
+  // decorative span the pointer happened to land on.
   document.addEventListener(
     "click",
     (e) => {
-      // Los clicks sobre la superficie de anotación son gestos de dibujo,
-      // no pasos del usuario en la página.
+      // Clicks on the annotation surface are drawing gestures, not user
+      // steps on the page.
       if (e.target.closest && e.target.closest("#qa-recorder-annotate")) return;
       const el =
         (e.target.closest &&
@@ -70,7 +71,7 @@
             "a,button,input,select,textarea,label,summary,[role=button],[role=link],[role=tab],[onclick]"
           )) ||
         e.target;
-      post("Click en " + describeEl(el));
+      post("Click on " + describeEl(el));
     },
     true
   );
@@ -80,7 +81,7 @@
     (e) => {
       const el = e.target;
       if (!el || !el.tagName) return;
-      post("Cambio en " + describeEl(el) + " (valor no registrado)");
+      post("Change in " + describeEl(el) + " (value not recorded)");
     },
     true
   );
@@ -88,7 +89,7 @@
   document.addEventListener(
     "submit",
     (e) => {
-      post("Envío del formulario " + describeEl(e.target));
+      post("Form submitted " + describeEl(e.target));
     },
     true
   );

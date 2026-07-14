@@ -1,8 +1,8 @@
 "use strict";
 
-// Grabación de PANTALLA o VENTANA. Todo ocurre en esta ventana:
-// chooseDesktopMedia y getUserMedia en el mismo frame, que es el único
-// consumo del streamId que Chrome garantiza. Requiere capture-common.js.
+// SCREEN or WINDOW recording. Everything happens in this window:
+// chooseDesktopMedia and getUserMedia in the same frame, the only
+// streamId consumption Chrome guarantees. Requires capture-common.js.
 
 const log = (...a) => console.log("[recorder]", ...a);
 
@@ -25,7 +25,7 @@ function toBackground(type, extra) {
   chrome.runtime.sendMessage({ target: "background", type, ...extra });
 }
 
-// ---------- Mensajes (parar desde el popup o el atajo) ----------
+// ---------- Messages (stop from the popup or the shortcut) ----------
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg || msg.target !== "recorder") return false;
@@ -42,7 +42,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       URL.revokeObjectURL(url);
       if (url === blobUrl) blobUrl = null;
     }
-    if (urls.length) log("blob revocado tras la descarga");
+    if (urls.length) log("blob revoked after download");
     sendResponse({ ok: true });
     return false;
   }
@@ -50,44 +50,44 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   return false;
 });
 
-// ---------- Selector ----------
+// ---------- Picker ----------
 
-log("solicitando selector de captura");
+log("requesting capture picker");
 chrome.desktopCapture.chooseDesktopMedia(
   ["screen", "window", "audio"],
   async (streamId, opts) => {
     if (chrome.runtime.lastError) {
-      log("selector devolvió error:", chrome.runtime.lastError.message);
+      log("picker returned an error:", chrome.runtime.lastError.message);
       toBackground("rec:failed", {
-        message: "Selector de captura: " + chrome.runtime.lastError.message,
+        message: "Capture picker: " + chrome.runtime.lastError.message,
       });
       return;
     }
     if (!streamId) {
-      log("selector cancelado por el usuario");
+      log("picker cancelled by the user");
       toBackground("rec:cancelled");
       return;
     }
-    // Otra grabación pudo empezar mientras el selector estaba abierto.
+    // Another recording may have started while the picker was open.
     const { isRecording } = await chrome.storage.session.get({ isRecording: false });
     if (isRecording) {
-      log("ya hay una grabación en curso; se cancela esta");
+      log("a recording is already in progress; cancelling this one");
       toBackground("rec:cancelled");
       return;
     }
     try {
       await start(streamId, !!(opts && opts.canRequestAudioTrack));
     } catch (e) {
-      log("error al iniciar:", e);
+      log("failed to start:", e);
       cleanupStreams();
       toBackground("rec:failed", {
-        message: "No se pudo iniciar la grabación: " + humanError(e),
+        message: "Could not start the recording: " + humanError(e),
       });
     }
   }
 );
 
-// ---------- Captura y grabación ----------
+// ---------- Capture and recording ----------
 
 async function start(streamId, systemAudio) {
   const cfg = await chrome.storage.local.get({ mic: false, quality: "medium" });
@@ -106,21 +106,21 @@ async function start(streamId, systemAudio) {
       },
     },
   });
-  log("captura obtenida:", displayStream.getTracks().map((t) => t.kind + " · " + t.label));
+  log("capture obtained:", displayStream.getTracks().map((t) => t.kind + " · " + t.label));
 
   let micTrack = null;
   if (cfg.mic) {
     try {
-      // Al ser una ventana visible, el aviso de permiso puede mostrarse aquí.
+      // Being a visible window, the permission prompt can be shown here.
       micStream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
       });
       micTrack = micStream.getAudioTracks()[0];
-      log("micrófono:", micTrack.label);
+      log("microphone:", micTrack.label);
     } catch (e) {
-      log("micrófono no disponible:", e.name, e.message);
+      log("microphone unavailable:", e.name, e.message);
       toBackground("sw:warn", {
-        message: "Grabando sin micrófono: " + humanError(e),
+        message: "Recording without microphone: " + humanError(e),
       });
     }
   }
@@ -130,21 +130,21 @@ async function start(streamId, systemAudio) {
   if (systemAudio && !sysTrack) {
     toBackground("sw:warn", {
       message:
-        "Chrome no entregó audio del sistema (¿marcaste «Compartir audio» en el selector?). Se graba sin él.",
+        "Chrome did not deliver system audio (did you check 'Share audio' in the picker?). Recording without it.",
     });
   }
 
-  // Pantalla/ventana: sin playthrough (el sonido del sistema no se silencia
-  // al capturarlo; reinyectarlo lo duplicaría o crearía un bucle).
+  // Screen/window: no playthrough (system sound is not muted while being
+  // captured; re-injecting it would duplicate it or create a loop).
   const graph = buildAudioGraph(sysTrack, micTrack, false);
   audioCtx = graph.audioCtx;
   const combined = new MediaStream(
     graph.audioTrack ? [videoTrack, graph.audioTrack] : [videoTrack]
   );
 
-  // "Dejar de compartir" en la barra de Chrome.
+  // "Stop sharing" in Chrome's bar.
   videoTrack.addEventListener("ended", () => {
-    log("compartición finalizada por el usuario");
+    log("sharing ended by the user");
     stop();
   });
 
@@ -161,15 +161,15 @@ async function start(streamId, systemAudio) {
   };
   recorder.onstop = finalize;
   recorder.onerror = (e) => {
-    const detail = (e.error && e.error.message) || "desconocido";
+    const detail = (e.error && e.error.message) || "unknown";
     log("MediaRecorder error:", detail);
     cleanupStreams();
-    toBackground("rec:failed", { message: "Error del grabador: " + detail });
+    toBackground("rec:failed", { message: "Recorder error: " + detail });
   };
   recorder.start(1000);
-  log("grabando con", recorder.mimeType || "codec por defecto");
+  log("recording with", recorder.mimeType || "default codec");
 
-  // UI + cronómetro
+  // UI + timer
   setView("recording");
   const startedAt = Date.now();
   const tick = () => {
@@ -186,12 +186,12 @@ async function start(streamId, systemAudio) {
 
   toBackground("rec:started");
 
-  // Se minimiza para no estorbar; el popup y el atajo siguen controlando.
+  // Minimized to stay out of the way; the popup and shortcut still control it.
   try {
     const win = await chrome.windows.getCurrent();
     await chrome.windows.update(win.id, { state: "minimized" });
   } catch (e) {
-    log("no se pudo minimizar:", e);
+    log("could not minimize:", e);
   }
 }
 
@@ -202,7 +202,7 @@ function stop() {
 function finalize() {
   clearInterval(timerInterval);
   setView("saving");
-  log("finalizando;", chunks.length, "fragmentos");
+  log("finalizing;", chunks.length, "chunks");
   const type = (recorder && recorder.mimeType) || "video/webm";
   const blob = new Blob(chunks, { type });
   chunks = [];
@@ -212,11 +212,11 @@ function finalize() {
   toBackground("sw:complete", {
     from: "recorder",
     url: blobUrl,
-    filename: `grabaciones-pantalla/grabacion-${stamp()}.webm`,
+    filename: `screen-recordings/recording-${stamp()}.webm`,
     bytes: blob.size,
   });
   cleanupStreams();
-  // El service worker cierra esta ventana cuando la descarga termina.
+  // The service worker closes this window once the download finishes.
 }
 
 function cleanupStreams() {

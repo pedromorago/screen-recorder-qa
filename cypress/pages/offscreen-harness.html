@@ -1,11 +1,11 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Harness de offscreen.js</title>
+  <title>offscreen.js harness</title>
   <script>
-    // Stub mínimo de chrome.* para poder cargar offscreen.js fuera de la
-    // extensión y probar los generadores de informes (.console.log/.har).
+    // Minimal chrome.* stub so offscreen.js can load outside the
+    // extension and the report builders (.console.log/.har) can be tested.
     window.chrome = {
       runtime: {
         onMessage: { addListener() {} },
@@ -18,6 +18,6 @@
   <script src="/offscreen.js"></script>
 </head>
 <body>
-  Harness de generación de informes del documento offscreen.
+  Harness for the offscreen document's report builders.
 </body>
 </html>

@@ -1,10 +1,10 @@
 "use strict";
 
-// Superficie de anotación sobre la pestaña grabada (mundo AISLADO). Como
-// el overlay es DOM de la propia página, la captura de pestaña lo graba
-// sin tocar el pipeline de vídeo. Se activa/desactiva con el comando
-// toggle-annotate (Ctrl/Cmd+Shift+Y) o el botón del popup, vía
-// chrome.tabs.sendMessage desde el background.
+// Annotation surface over the recorded tab (ISOLATED world). Since the
+// overlay is DOM inside the page itself, tab capture records it without
+// touching the video pipeline. It is toggled with the toggle-annotate
+// command (Ctrl/Cmd+Shift+Y) or the popup button, via
+// chrome.tabs.sendMessage from the background.
 
 (() => {
   if (window.__qaRecorderAnnotateInstalled) return;
@@ -22,8 +22,8 @@
   let color = COLORS[0];
 
   function resize() {
-    // Redimensionar resetea el bitmap del canvas: los trazos se pierden,
-    // aceptable (la anotación es efímera por diseño).
+    // Resizing resets the canvas bitmap: strokes are lost, which is fine
+    // (annotations are ephemeral by design).
     const dpr = window.devicePixelRatio || 1;
     canvas.width = Math.max(1, Math.round(window.innerWidth * dpr));
     canvas.height = Math.max(1, Math.round(window.innerHeight * dpr));
@@ -47,7 +47,7 @@
     try {
       canvas.setPointerCapture(e.pointerId);
     } catch (err) {
-      /* pointerId sintético en tests */
+      /* synthetic pointerId in tests */
     }
     ctx.strokeStyle = color;
     ctx.beginPath();
@@ -102,12 +102,12 @@
       "align-items:center;background:rgba(20,26,32,.92);border:1px solid rgba(255,255,255,.25);" +
       "border-radius:999px;padding:8px 12px;";
     for (const c of COLORS) {
-      const swatch = button("", "Color de trazo", () => (color = c),
+      const swatch = button("", "Stroke color", () => (color = c),
         `width:22px;height:22px;padding:0;background:${c};border:2px solid #fff;`);
       toolbar.appendChild(swatch);
     }
-    toolbar.appendChild(button("Borrar", "Borrar los trazos", clearCanvas, "", "clear"));
-    toolbar.appendChild(button("Salir ✕", "Cerrar la anotación (Esc)", () => setActive(false), "", "close"));
+    toolbar.appendChild(button("Clear", "Clear the strokes", clearCanvas, "", "clear"));
+    toolbar.appendChild(button("Exit ✕", "Close the annotation (Esc)", () => setActive(false), "", "close"));
     container.appendChild(toolbar);
 
     document.documentElement.appendChild(container);
@@ -129,8 +129,8 @@
     container.style.display = active ? "block" : "none";
     if (active) {
       resize();
-      // Deja constancia en la línea de tiempo (si el registro de pasos
-      // está activo, el puente la reenviará al offscreen).
+      // Leave a trace on the timeline (if the steps log is enabled, the
+      // bridge relays it to the offscreen document).
       try {
         window.postMessage(
           {
@@ -138,13 +138,13 @@
               kind: "step",
               level: "info",
               t: Date.now(),
-              text: "Anotación sobre el vídeo activada",
+              text: "On-video annotation enabled",
             },
           },
           "*"
         );
       } catch (e) {
-        /* sin puente: da igual */
+        /* no bridge: doesn't matter */
       }
     } else {
       clearCanvas();

@@ -1,10 +1,10 @@
 "use strict";
 
-// Se inyecta en el MUNDO PRINCIPAL (world: "MAIN") de la pestaña grabada.
-// Envuelve console.* y escucha errores JS para el registro de consola que
-// acompaña al vídeo. Aquí no existe chrome.runtime: cada entrada se publica
-// con window.postMessage y console-capture-bridge.js (mundo aislado) la
-// reenvía a la extensión.
+// Injected into the MAIN world (world: "MAIN") of the recorded tab. Wraps
+// console.* and listens for JS errors, feeding the console log that ships
+// alongside the video. chrome.runtime does not exist here: each entry is
+// published with window.postMessage and console-capture-bridge.js
+// (isolated world) relays it to the extension.
 
 (() => {
   if (window.__qaRecorderMainInstalled) return;
@@ -17,25 +17,25 @@
     try {
       window.postMessage({ [MARK]: entry }, "*");
     } catch (e) {
-      /* entrada no clonable o página cerrándose: se descarta */
+      /* non-cloneable entry or page tearing down: drop it */
     }
   }
 
   const clip = (s) =>
-    s.length > MAX_TEXT ? s.slice(0, MAX_TEXT) + " … [recortado]" : s;
+    s.length > MAX_TEXT ? s.slice(0, MAX_TEXT) + " … [truncated]" : s;
 
-  // Descripción textual segura de cualquier valor: nunca lanza.
+  // Safe textual description of any value: never throws.
   function describe(value) {
     try {
       if (typeof value === "string") return clip(value);
       if (value === null || value === undefined) return String(value);
       if (typeof value === "function")
-        return "[función " + (value.name || "anónima") + "]";
+        return "[function " + (value.name || "anonymous") + "]";
       if (value instanceof Error)
         return clip(value.stack || value.name + ": " + value.message);
       if (typeof Node !== "undefined" && value instanceof Node) {
         const el = value.nodeType === 1 ? value : null;
-        if (!el) return "[nodo " + value.nodeName + "]";
+        if (!el) return "[node " + value.nodeName + "]";
         return (
           "<" +
           el.tagName.toLowerCase() +
@@ -55,7 +55,7 @@
               seen.add(v);
             }
             if (typeof v === "function")
-              return "[función " + (v.name || "anónima") + "]";
+              return "[function " + (v.name || "anonymous") + "]";
             if (typeof v === "bigint") return v.toString() + "n";
             return v;
           }) ?? String(value)
@@ -64,7 +64,7 @@
       if (typeof value === "bigint") return value.toString() + "n";
       return String(value);
     } catch (e) {
-      return "[no serializable]";
+      return "[unserializable]";
     }
   }
 
@@ -83,10 +83,10 @@
     };
   }
 
-  // ---------- Errores no capturados ----------
+  // ---------- Uncaught errors ----------
 
-  // capture: true para recibir también errores de carga de recursos
-  // (imágenes, scripts, etc.), que no burbujean hasta window.
+  // capture: true so we also receive resource load errors (images,
+  // scripts, etc.), which do not bubble up to window.
   window.addEventListener(
     "error",
     (e) => {
@@ -98,7 +98,7 @@
           level: "error",
           t: Date.now(),
           text:
-            "Recurso no cargado: <" +
+            "Resource failed to load: <" +
             (el.tagName || "?").toLowerCase() +
             ">" +
             (src ? " " + clip(String(src)) : ""),
@@ -112,7 +112,7 @@
         text:
           (e.error ? describe(e.error) : clip(String(e.message))) +
           (e.filename
-            ? "\n    en " + e.filename + ":" + e.lineno + ":" + e.colno
+            ? "\n    at " + e.filename + ":" + e.lineno + ":" + e.colno
             : ""),
       });
     },
@@ -124,7 +124,7 @@
       kind: "rejection",
       level: "error",
       t: Date.now(),
-      text: "Promesa rechazada sin capturar: " + describe(e.reason),
+      text: "Uncaught promise rejection: " + describe(e.reason),
     });
   });
 })();

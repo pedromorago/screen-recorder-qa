@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Grabador de pantalla",
-  "version": "1.9.0",
-  "description": "Graba tu pantalla, ventana o pestaña. Modo QA: consola, red (HAR), pasos e informe de bug sincronizados con el vídeo.",
+  "name": "Screen Recorder · QA mode",
+  "version": "2.0.0",
+  "description": "Record your screen, window or tab. QA mode: console, network (HAR), steps and a bug report synced with the video.",
   "permissions": [
     "desktopCapture",
     "tabCapture",
@@ -21,7 +21,7 @@
     "open_in_tab": true
   },
   "action": {
-    "default_title": "Grabar pantalla",
+    "default_title": "Record screen",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon16.png",
@@ -40,21 +40,21 @@
         "default": "Ctrl+Shift+U",
         "mac": "Command+Shift+U"
       },
-      "description": "Iniciar o detener la grabación"
+      "description": "Start or stop the recording"
     },
     "add-marker": {
       "suggested_key": {
         "default": "Ctrl+Shift+K",
         "mac": "Command+Shift+K"
       },
-      "description": "Añadir un marcador de bug a la grabación"
+      "description": "Add a bug marker to the recording"
     },
     "toggle-annotate": {
       "suggested_key": {
         "default": "Ctrl+Shift+Y",
         "mac": "Command+Shift+Y"
       },
-      "description": "Dibujar sobre la pestaña grabada (anotación)"
+      "description": "Draw over the recorded tab (annotation)"
     }
   }
 }
