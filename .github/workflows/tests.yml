@@ -8,6 +8,7 @@ jobs:
   cypress:
     name: Cypress (QA capture engine)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -26,6 +27,7 @@ jobs:
   playwright:
     name: Playwright (real extension in Chromium)
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

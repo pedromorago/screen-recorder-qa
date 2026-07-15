@@ -101,11 +101,12 @@
       "position:absolute;top:12px;left:50%;transform:translateX(-50%);display:flex;gap:8px;" +
       "align-items:center;background:rgba(20,26,32,.92);border:1px solid rgba(255,255,255,.25);" +
       "border-radius:999px;padding:8px 12px;";
-    for (const c of COLORS) {
-      const swatch = button("", "Stroke color", () => (color = c),
+    const COLOR_NAMES = ["Draw in red", "Draw in yellow", "Draw in green"];
+    COLORS.forEach((c, i) => {
+      const swatch = button("", COLOR_NAMES[i] || "Stroke color", () => (color = c),
         `width:22px;height:22px;padding:0;background:${c};border:2px solid #fff;`);
       toolbar.appendChild(swatch);
-    }
+    });
     toolbar.appendChild(button("Clear", "Clear the strokes", clearCanvas, "", "clear"));
     toolbar.appendChild(button("Exit ✕", "Close the annotation (Esc)", () => setActive(false), "", "close"));
     container.appendChild(toolbar);

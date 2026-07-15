@@ -9,7 +9,7 @@ A Chrome extension (Manifest V3) that records your screen, a window or a tab, bu
 - Records the current tab in one click, audio included automatically
 - **QA mode**: while recording a tab, it captures `console.log/warn/error`, uncaught exceptions, unhandled promise rejections and resources that fail to load (image/script 404s), each entry with its `+mm:ss.mmm` offset into the video — "the error popped at second 12" stops being a sentence and becomes a log line
 - **Network included**: records every `fetch`/XHR request (method, URL, status, duration, headers) and exports it as **HAR**, which opens by dragging it onto any DevTools' Network tab; failures (network/CORS errors and 4xx/5xx) also show up on the log's timeline, right between the console errors
-- **Automatic steps to reproduce**: clicks (attributed to the real button, not the decorative `<span>`), field changes and form submits, numbered with their offset in `*.steps.md`. Privacy rule: **typed values are never recorded** — a bug report doesn't need the tester's password
+- **Automatic steps to reproduce**: clicks (attributed to the real button, not the decorative `<span>`), field changes, form submits and navigations — **including SPA route changes** (`pushState`, verified to be observable from the isolated world via the Navigation API) — numbered with their offset in `*.steps.md`. Privacy rule: **typed values are never recorded** — a bug report doesn't need the tester's password
 - **"The bug is here" markers**: `Ctrl/Cmd+Shift+K` or the popup's 💥 button drop a timestamped mark mid-recording, highlighted later in the report
 - **On-video annotations**: `Ctrl/Cmd+Shift+Y` or the popup's ✏️ button open a drawing canvas over the recorded tab (three colors, clear, Esc to exit). Since the strokes are DOM inside the page, the capture records them without touching the video pipeline — and drawing gestures don't pollute the steps log
 - **Recording report** `*.report.md`: environment (URL, Chrome, OS, language, timezone, duration), a summary of JS errors / broken resources / failed requests, markers, timeline errors and steps — the ticket almost writes itself
@@ -26,7 +26,7 @@ Example `*.console.log`:
 # Console log — Screen Recorder (QA mode)
 # Page: Checkout — https://shop.example/checkout
 # Video start: 2026-07-14T11:02:41.000Z
-# 4 entries
+# 5 entries
 
 [+00:00.000] NAV   https://shop.example/checkout
 [+00:07.412] WARN  low stock for SKU-1042
@@ -85,7 +85,7 @@ Two tools, one layer each — choosing what gets tested with which, and knowing 
 
 - `console-capture.cy.js` — console wrapper: levels and arguments, exceptions, rejected promises, 404 resources, circular objects, symbols/bigints, huge-message truncation, double-injection guard
 - `network-capture.cy.js` — network wrapper: fetch 200/500, relative URL resolution, network failures with status 0, XHR with request/response headers, reused XHR without duplicates, double-injection guard
-- `bridge.cy.js` — isolated-world bridge: navigation entry, batching, immediate flush at 50 entries
+- `bridge.cy.js` — isolated-world bridge: navigation entries (including SPA `pushState` navigations via the Navigation API, deduped by href), batching, immediate flush at 50 entries
 - `reports.cy.js` — offscreen report builders: offset format, toggle filtering, `.console.log`/`.console.json`, `.steps.md`, `.report.md` and HAR validity (pages per navigation, `pageref` by timestamp, queryString)
 - `annotate.cy.js` — annotation surface: toggle, drawing with pixels verified on the canvas, clear, Esc, and drawing gestures not polluting the steps log
 - `issue-reporter.cy.js` — issue creation with real fetch against Jira/Linear mocks that capture the request: auth, payload, Linear team resolution, HTTP error propagation

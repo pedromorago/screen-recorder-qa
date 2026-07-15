@@ -25,7 +25,10 @@ unpacked in Chrome.
   method, URL, status, duration, bounded headers) and `steps-capture.js`
   (ISOLATED world: clicks, field changes and submits; NEVER records typed
   values) + `console-capture-bridge.js` (isolated world: batches entries
-  and relays them to the offscreen; shared by all). The background
+  and relays them to the offscreen; shared by all; also emits the nav
+  entries, including SPA navigations via the Navigation API —
+  navigatesuccess DOES fire in the isolated world — with popstate and
+  hashchange as fallback, deduped by href). The background
   injects them according to the toggles with
   `chrome.scripting.executeScript` on start and RE-INJECTS them on
   `tabs.onUpdated` (status "loading") if the tab navigates. Markers: the

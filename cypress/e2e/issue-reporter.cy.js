@@ -90,6 +90,27 @@ describe("issue-reporter.js (Jira/Linear)", () => {
       .then((text) => expect(text).to.contain("Test User"));
   });
 
+  it("encodes non-Latin-1 credentials without throwing (UTF-8 Basic auth)", () => {
+    cy.window().then((win) => {
+      const { options } = win.buildJiraCreate(
+        { ...jiraCfg(), email: "tëster@exämple.com" },
+        "t",
+        "b"
+      );
+      expect(options.headers.Authorization).to.match(/^Basic [A-Za-z0-9+/=]+$/);
+    });
+  });
+
+  it("clips huge report bodies before sending (Jira caps descriptions ~32K)", () => {
+    cy.window().then((win) =>
+      win.createIssueFromReport({ provider: "jira", jira: jiraCfg() }, "big", "x".repeat(40000))
+    );
+    cy.request("/mock/__last").its("body.jira.body.fields.description").then((desc) => {
+      expect(desc.length).to.be.lessThan(31000);
+      expect(desc).to.contain("(truncated");
+    });
+  });
+
   it("with no provider configured, createIssueFromReport fails with a clear message", () => {
     cy.window().then((win) =>
       win.createIssueFromReport({ provider: "none" }, "t", "b").then(

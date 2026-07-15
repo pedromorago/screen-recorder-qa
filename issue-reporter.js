@@ -18,6 +18,20 @@ const clipErr = (s) => {
 
 const trimBase = (u) => String(u || "").replace(/\/+$/, "");
 
+// UTF-8-safe Base64: bare btoa() throws on non-Latin-1 credentials
+// (an email or token with an accented character).
+const b64 = (s) => btoa(String.fromCharCode(...new TextEncoder().encode(String(s))));
+
+// Jira caps description fields around 32K characters; a report with many
+// long error lines can exceed it and turn into an opaque 400.
+const MAX_ISSUE_BODY = 30_000;
+const clipBody = (body) => {
+  body = String(body || "");
+  return body.length > MAX_ISSUE_BODY
+    ? body.slice(0, MAX_ISSUE_BODY) + "\n\n… (truncated; full report in the downloaded .report.md)"
+    : body;
+};
+
 // ---------- Jira ----------
 
 function buildJiraCreate(cfg, title, body) {
@@ -27,7 +41,7 @@ function buildJiraCreate(cfg, title, body) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: "Basic " + btoa(cfg.email + ":" + cfg.apiToken),
+        Authorization: "Basic " + b64(cfg.email + ":" + cfg.apiToken),
       },
       body: JSON.stringify({
         fields: {
@@ -103,6 +117,7 @@ async function linearCreateIssue(cfg, title, body) {
 
 // cfgAll = { provider: "none"|"jira"|"linear", autoCreate, jira: {...}, linear: {...} }
 async function createIssueFromReport(cfgAll, title, body) {
+  body = clipBody(body);
   if (cfgAll && cfgAll.provider === "jira") return jiraCreateIssue(cfgAll.jira || {}, title, body);
   if (cfgAll && cfgAll.provider === "linear") return linearCreateIssue(cfgAll.linear || {}, title, body);
   throw new Error("No issue provider configured");
@@ -113,7 +128,7 @@ async function testIssueConnection(cfgAll) {
   if (cfgAll && cfgAll.provider === "jira") {
     const cfg = cfgAll.jira || {};
     const res = await fetch(trimBase(cfg.siteUrl) + "/rest/api/2/myself", {
-      headers: { Authorization: "Basic " + btoa(cfg.email + ":" + cfg.apiToken) },
+      headers: { Authorization: "Basic " + b64(cfg.email + ":" + cfg.apiToken) },
     });
     if (!res.ok) throw new Error("Jira responded " + res.status);
     const me = await res.json();

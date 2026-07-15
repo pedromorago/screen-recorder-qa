@@ -66,16 +66,24 @@ test("the popup reflects the recording state live (storage.session)", async ({ c
   await expect(popup.locator("body")).toHaveAttribute("data-state", "idle");
 
   await sw.evaluate(() =>
-    chrome.storage.session.set({ isRecording: true, startTime: Date.now() })
+    chrome.storage.session.set({ isRecording: true, startTime: Date.now(), captureTarget: "offscreen" })
   );
   await expect(popup.locator("body")).toHaveAttribute("data-state", "recording");
   await expect(popup.locator("#timer")).toBeVisible();
   await expect(popup.locator("#consoleLog")).toBeDisabled();
   await expect(popup.locator("#btnStop")).toBeVisible();
   await expect(popup.locator("#btnMarker")).toBeVisible();
+  await expect(popup.locator("#btnAnnotate")).toBeVisible();
+
+  // Markers/annotations only exist in the tab flow: in a screen/window
+  // recording the buttons hide instead of being silent no-ops.
+  await sw.evaluate(() => chrome.storage.session.set({ captureTarget: "recorder" }));
+  await expect(popup.locator("#btnMarker")).toBeHidden();
+  await expect(popup.locator("#btnAnnotate")).toBeHidden();
+  await expect(popup.locator("#btnStop")).toBeVisible();
 
   await sw.evaluate(() =>
-    chrome.storage.session.set({ isRecording: false, startTime: null })
+    chrome.storage.session.set({ isRecording: false, startTime: null, captureTarget: null })
   );
   await expect(popup.locator("body")).toHaveAttribute("data-state", "idle");
 });

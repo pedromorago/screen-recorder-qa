@@ -48,8 +48,27 @@
   });
 
   // Navigation mark: places each page on the video's timeline.
-  buf.push({ kind: "nav", level: "info", t: Date.now(), text: location.href });
+  let lastHref = location.href;
+  buf.push({ kind: "nav", level: "info", t: Date.now(), text: lastHref });
   schedule();
+
+  // SPA navigations never reload the document, so tabs.onUpdated never
+  // fires and full-document tracking alone would leave a single nav entry
+  // for the whole session. The Navigation API sees pushState/replaceState
+  // (verified: its events DO fire in the isolated world); popstate and
+  // hashchange are the fallback. Several may fire for one change: dedupe
+  // by href.
+  function reportNav() {
+    if (location.href === lastHref) return;
+    lastHref = location.href;
+    buf.push({ kind: "nav", level: "info", t: Date.now(), text: lastHref });
+    schedule();
+  }
+  window.addEventListener("popstate", reportNav);
+  window.addEventListener("hashchange", reportNav);
+  if (typeof navigation !== "undefined" && navigation.addEventListener) {
+    navigation.addEventListener("navigatesuccess", reportNav);
+  }
 
   // One last flush before the page unloads.
   window.addEventListener("pagehide", flush);

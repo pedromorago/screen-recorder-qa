@@ -24,9 +24,15 @@ function fmt(ms) {
   return h > 0 ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
 }
 
-function render({ isRecording, startTime, notice }) {
+function render({ isRecording, startTime, notice, captureTarget }) {
   document.body.dataset.state = isRecording ? "recording" : "idle";
   micIn.disabled = consoleIn.disabled = networkIn.disabled = stepsIn.disabled = qualitySel.disabled = isRecording;
+
+  // Markers and annotations only exist in the tab flow: a screen/window
+  // recording has no tab to send them to, so the buttons would be no-ops.
+  const tabFlow = captureTarget === "offscreen";
+  btnMarker.style.display = tabFlow ? "" : "none";
+  btnAnnotate.style.display = tabFlow ? "" : "none";
 
   clearInterval(timerInterval);
   if (isRecording && startTime) {
@@ -48,6 +54,7 @@ async function refresh() {
     isRecording: false,
     startTime: null,
     notice: null,
+    captureTarget: null,
   });
   render(s);
 }

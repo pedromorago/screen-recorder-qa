@@ -66,6 +66,28 @@ describe("console-capture-bridge.js (isolated world)", () => {
     });
   });
 
+  it("records SPA navigations (pushState) as nav entries", () => {
+    // Modern SPAs navigate without reloading the document: without this,
+    // a whole session would show a single nav entry on the timeline.
+    cy.window().should((win) => expect(win.__batches.length).to.be.gte(1));
+    cy.window().then((win) => {
+      win.__batches = [];
+      win.eval("history.pushState({}, '', '?spa=checkout-step-2')");
+    });
+    cy.window().should((win) => {
+      const navs = win.__batches.flatMap((b) => b.entries).filter((e) => e.kind === "nav");
+      expect(navs.some((e) => e.text.includes("spa=checkout-step-2")), "pushState tracked").to.be.true;
+    });
+    // The same URL reported by several events (navigatesuccess + popstate)
+    // is deduped by href.
+    cy.window().should((win) => {
+      const navs = win.__batches
+        .flatMap((b) => b.entries)
+        .filter((e) => e.kind === "nav" && e.text.includes("spa=checkout-step-2"));
+      expect(navs, "no duplicate nav entries").to.have.length(1);
+    });
+  });
+
   it("double injection of the bridge does not duplicate batches (install guard)", () => {
     cy.injectExtensionScript("console-capture-bridge.js"); // second injection
     cy.injectExtensionScript("console-capture-main.js");

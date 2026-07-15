@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Screen Recorder · QA mode",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Record your screen, window or tab. QA mode: console, network (HAR), steps and a bug report synced with the video.",
   "permissions": [
     "desktopCapture",
