@@ -60,6 +60,30 @@ unpacked in Chrome.
 - Messaging: `chrome.runtime.sendMessage` with a `target` field
   ("background" | "offscreen" | "recorder").
 
+## Code conventions and conscious trade-offs
+
+- No build step, no modules: files loaded in the same context share
+  top-level globals (capture-common.js before offscreen/recorder/popup;
+  issue-reporter.js via importScripts/<script>). Those symbols are
+  declared in eslint.config.js and marked with /* exported */ where they
+  are defined. `npm run lint` (ESLint, also in CI) must stay clean.
+- The injected MAIN-world scripts each re-declare tiny helpers (MARK,
+  post, clip) ON PURPOSE: they are injected independently into an
+  untrusted page and sharing code between them would need either a build
+  step or polluting the page's global scope. Do not "deduplicate" them.
+- Message types are namespaced by receiver: `popup:*` (popup →
+  background), `off:*` (background → offscreen), `rec:*` (background →
+  recorder), `sw:*` (capture contexts → background). Message listeners
+  are thin routers; anything longer than a few lines lives in a named
+  function (e.g. handleRecordingComplete).
+- Injection is data-driven: CAPTURE_SCRIPTS in background.js is the
+  single list of what gets injected into the recorded tab. New capture
+  script = new row.
+- Shared time formatting lives in capture-common.js (formatElapsed);
+  don't re-implement it per page.
+- Don't name a top-level function after a window built-in (the `stop()`
+  vs window.stop lesson: it's stopCapture in offscreen/recorder).
+
 ## MV3 constraints learned the hard way (do NOT revert)
 
 1. `chrome.desktopCapture.chooseDesktopMedia` from the service worker

@@ -31,7 +31,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg || msg.target !== "recorder") return false;
 
   if (msg.type === "rec:stop") {
-    stop();
+    stopCapture();
     sendResponse({ ok: true });
     return false;
   }
@@ -145,7 +145,7 @@ async function start(streamId, systemAudio) {
   // "Stop sharing" in Chrome's bar.
   videoTrack.addEventListener("ended", () => {
     log("sharing ended by the user");
-    stop();
+    stopCapture();
   });
 
   const mimeType = pickMime();
@@ -172,15 +172,7 @@ async function start(streamId, systemAudio) {
   // UI + timer
   setView("recording");
   const startedAt = Date.now();
-  const tick = () => {
-    const t = Math.floor((Date.now() - startedAt) / 1000);
-    const h = Math.floor(t / 3600);
-    const m = Math.floor(t / 60) % 60;
-    const s = t % 60;
-    timerEl.textContent =
-      (h > 0 ? String(h).padStart(2, "0") + ":" : "") +
-      String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
-  };
+  const tick = () => (timerEl.textContent = formatElapsed(Date.now() - startedAt));
   tick();
   timerInterval = setInterval(tick, 500);
 
@@ -195,7 +187,8 @@ async function start(streamId, systemAudio) {
   }
 }
 
-function stop() {
+// Named stopCapture (not stop) to avoid shadowing window.stop().
+function stopCapture() {
   if (recorder && recorder.state !== "inactive") recorder.stop();
 }
 
@@ -231,4 +224,4 @@ function cleanupStreams() {
   recorder = null;
 }
 
-btnStop.addEventListener("click", stop);
+btnStop.addEventListener("click", stopCapture);

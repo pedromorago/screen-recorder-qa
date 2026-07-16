@@ -74,46 +74,28 @@ async function sendTo(target, msg, attempts = 12) {
 
 const injectableUrl = (url) => /^https?:/.test(url || "");
 
-// Wrappers in the MAIN world (no chrome.runtime there) + a bridge in the
-// isolated world that relays everything to the offscreen document.
-async function injectQaCapture(tabId, { consoleCapture, networkCapture, stepsCapture }) {
-  if (consoleCapture) {
+// Everything injected into the recorded tab, declaratively: adding a new
+// capture script is adding a row. MAIN world for the wrappers (no
+// chrome.runtime there); the bridge and the annotation surface (which
+// draws DOM the capture records for free) always ship with the tab flow.
+const CAPTURE_SCRIPTS = [
+  { file: "console-capture-main.js", world: "MAIN", when: (on) => on.consoleCapture },
+  { file: "network-capture-main.js", world: "MAIN", when: (on) => on.networkCapture },
+  { file: "steps-capture.js", when: (on) => on.stepsCapture }, // isolated world suffices
+  { file: "console-capture-bridge.js" },
+  { file: "annotate-overlay.js" },
+];
+
+async function injectQaCapture(tabId, toggles) {
+  for (const script of CAPTURE_SCRIPTS) {
+    if (script.when && !script.when(toggles)) continue;
     await chrome.scripting.executeScript({
       target: { tabId },
-      files: ["console-capture-main.js"],
-      world: "MAIN",
+      files: [script.file],
+      world: script.world,
       injectImmediately: true,
     });
   }
-  if (networkCapture) {
-    await chrome.scripting.executeScript({
-      target: { tabId },
-      files: ["network-capture-main.js"],
-      world: "MAIN",
-      injectImmediately: true,
-    });
-  }
-  if (stepsCapture) {
-    // User steps are visible from the isolated world: no MAIN needed.
-    await chrome.scripting.executeScript({
-      target: { tabId },
-      files: ["steps-capture.js"],
-      injectImmediately: true,
-    });
-  }
-  await chrome.scripting.executeScript({
-    target: { tabId },
-    files: ["console-capture-bridge.js"],
-    injectImmediately: true,
-  });
-  // The annotation surface ALWAYS ships with the tab flow (it does not
-  // depend on the QA toggles): it draws DOM over the page and the capture
-  // records it without touching the video pipeline.
-  await chrome.scripting.executeScript({
-    target: { tabId },
-    files: ["annotate-overlay.js"],
-    injectImmediately: true,
-  });
 }
 
 // Toggles the annotation surface on the recorded tab.
@@ -412,59 +394,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       break;
 
     case "sw:complete":
-      (async () => {
-        // The offscreen sends files[] (video + QA logs); the recorder
-        // still sends a bare url/filename pair.
-        const files = msg.files || [{ url: msg.url, filename: msg.filename }];
-        log(
-          "recording complete (" + msg.from + "):",
-          files.map((f) => f.filename).join(", "),
-          msg.bytes,
-          "video bytes"
-        );
-        const ids = [];
-        const urls = [];
-        let failed = 0;
-        for (const f of files) {
-          try {
-            const id = await chrome.downloads.download({
-              url: f.url,
-              filename: f.filename,
-              saveAs: false,
-            });
-            ids.push(id);
-            urls.push(f.url);
-          } catch (e) {
-            failed++;
-            log("could not download", f.filename, e);
-          }
-        }
-        if (ids.length) {
-          // Download GROUPS: if the user chains recordings, the previous
-          // recording's downloads may still be in flight. Each group is
-          // cleaned up separately once ALL its downloads finish.
-          const { pendingDownloads } = await chrome.storage.session.get({
-            pendingDownloads: null,
-          });
-          const groups = (pendingDownloads && pendingDownloads.groups) || [];
-          groups.push({ ids, urls, from: msg.from || "offscreen" });
-          await chrome.storage.session.set({ pendingDownloads: { groups } });
-        }
-        if (failed) {
-          await setNotice(
-            "error",
-            `Could not save ${failed} of ${files.length} files from the recording.`
-          );
-          if (!ids.length && (msg.from || "offscreen") === "recorder") {
-            await closeRecorderWindow();
-          }
-        }
-        await setRecordingState(false);
-        if (msg.report) {
-          // Does not block the downloads: creates the issue in the background.
-          reportIssueIfConfigured(msg.report).catch((e) => log("issue:", e));
-        }
-      })().catch((e) => {
+      handleRecordingComplete(msg).catch((e) => {
         log("download error:", e);
         setNotice("error", "Could not save the file: " + (e.message || e));
         setRecordingState(false);
@@ -485,6 +415,62 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
   return false;
 });
+
+// A recording finished: download every produced file, register the batch
+// as a download group, surface partial failures, and hand the report to
+// the issue reporter. The offscreen sends files[] (video + QA logs); the
+// recorder still sends a bare url/filename pair.
+async function handleRecordingComplete(msg) {
+  const files = msg.files || [{ url: msg.url, filename: msg.filename }];
+  log(
+    "recording complete (" + msg.from + "):",
+    files.map((f) => f.filename).join(", "),
+    msg.bytes,
+    "video bytes"
+  );
+  const ids = [];
+  const urls = [];
+  let failed = 0;
+  for (const f of files) {
+    try {
+      const id = await chrome.downloads.download({
+        url: f.url,
+        filename: f.filename,
+        saveAs: false,
+      });
+      ids.push(id);
+      urls.push(f.url);
+    } catch (e) {
+      failed++;
+      log("could not download", f.filename, e);
+    }
+  }
+  if (ids.length) {
+    // Download GROUPS: if the user chains recordings, the previous
+    // recording's downloads may still be in flight. Each group is
+    // cleaned up separately once ALL its downloads finish.
+    const { pendingDownloads } = await chrome.storage.session.get({
+      pendingDownloads: null,
+    });
+    const groups = (pendingDownloads && pendingDownloads.groups) || [];
+    groups.push({ ids, urls, from: msg.from || "offscreen" });
+    await chrome.storage.session.set({ pendingDownloads: { groups } });
+  }
+  if (failed) {
+    await setNotice(
+      "error",
+      `Could not save ${failed} of ${files.length} files from the recording.`
+    );
+    if (!ids.length && (msg.from || "offscreen") === "recorder") {
+      await closeRecorderWindow();
+    }
+  }
+  await setRecordingState(false);
+  if (msg.report) {
+    // Does not block the downloads: creates the issue in the background.
+    reportIssueIfConfigured(msg.report).catch((e) => log("issue:", e));
+  }
+}
 
 // Once ALL of a recording's downloads finish: revoke the blobs and close
 // the capture context to release the recording from memory. Events are

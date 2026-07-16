@@ -72,6 +72,7 @@ The full technical detail, written so a Claude Code session can read it before t
 npm install
 npx playwright install chromium   # first time only
 
+npm run lint              # ESLint (flat config), also enforced in CI
 npm run test:e2e          # Cypress headless (Electron)
 npm run test:e2e:chrome   # Cypress in Chrome, also loading the real extension
 npm run cypress:open      # Cypress interactive

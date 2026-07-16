@@ -1,5 +1,7 @@
 "use strict";
 
+/* exported buildJiraCreate, jiraCreateIssue, linearCreateIssue, createIssueFromReport, testIssueConnection */
+
 // Jira/Linear issue creation from the recording report. No chrome.*
 // dependencies: loaded with importScripts() in the service worker, with
 // <script> in options.html and in the tests. Credentials live in

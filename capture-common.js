@@ -1,7 +1,9 @@
 "use strict";
 
-// Utilities shared by offscreen.js (tab recording) and recorder.js
-// (screen/window recording). Loaded before both.
+/* exported QUALITY, pad, stamp, pickMime, humanError, buildAudioGraph, formatElapsed */
+
+// Utilities shared by offscreen.js (tab recording), recorder.js
+// (screen/window recording) and popup.js. Loaded before them.
 
 const QUALITY = {
   high: { frameRate: 30, videoBitsPerSecond: 8_000_000 },
@@ -17,6 +19,16 @@ function stamp() {
     `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
     `_${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`
   );
+}
+
+// Elapsed milliseconds → "mm:ss" ("hh:mm:ss" past the hour). Shared by
+// the popup timer, the recorder timer and the report's duration line.
+function formatElapsed(ms) {
+  const t = Math.floor(ms / 1000);
+  const h = Math.floor(t / 3600);
+  const m = Math.floor(t / 60) % 60;
+  const s = t % 60;
+  return (h > 0 ? pad(h) + ":" : "") + pad(m) + ":" + pad(s);
 }
 
 function pickMime() {

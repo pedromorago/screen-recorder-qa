@@ -3,14 +3,18 @@
   "private": true,
   "description": "Chrome MV3 extension: screen recorder with QA mode (console, JS errors, network, steps and a bug report synced with the video).",
   "scripts": {
+    "lint": "eslint .",
     "test:e2e": "cypress run",
     "test:e2e:chrome": "cypress run --browser chrome",
     "cypress:open": "cypress open",
     "test:ext": "playwright test",
-    "test:all": "cypress run && playwright test"
+    "test:all": "eslint . && cypress run && playwright test"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.61.1",
-    "cypress": "^15.18.1"
+    "cypress": "^15.18.1",
+    "eslint": "^10.7.0",
+    "globals": "^17.7.0"
   }
 }

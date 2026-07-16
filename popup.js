@@ -15,15 +15,6 @@ const noticeEl = document.getElementById("notice");
 
 let timerInterval = null;
 
-const pad = (n) => String(n).padStart(2, "0");
-function fmt(ms) {
-  const t = Math.floor(ms / 1000);
-  const h = Math.floor(t / 3600);
-  const m = Math.floor(t / 60) % 60;
-  const s = t % 60;
-  return h > 0 ? `${pad(h)}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
-}
-
 function render({ isRecording, startTime, notice, captureTarget }) {
   document.body.dataset.state = isRecording ? "recording" : "idle";
   micIn.disabled = consoleIn.disabled = networkIn.disabled = stepsIn.disabled = qualitySel.disabled = isRecording;
@@ -36,7 +27,7 @@ function render({ isRecording, startTime, notice, captureTarget }) {
 
   clearInterval(timerInterval);
   if (isRecording && startTime) {
-    const tick = () => (timerEl.textContent = fmt(Date.now() - startTime));
+    const tick = () => (timerEl.textContent = formatElapsed(Date.now() - startTime));
     tick();
     timerInterval = setInterval(tick, 500);
   }

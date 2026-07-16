@@ -58,7 +58,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   if (msg.type === "off:stop") {
-    stop();
+    stopCapture();
     sendResponse({ ok: true });
     return false;
   }
@@ -173,7 +173,7 @@ async function start({ streamId, systemAudio, mic, quality, consoleCapture, netw
 
   videoTrack.addEventListener("ended", () => {
     log("capture ended by the user");
-    stop();
+    stopCapture();
   });
 
   const mimeType = pickMime();
@@ -199,7 +199,8 @@ async function start({ streamId, systemAudio, mic, quality, consoleCapture, netw
   log("recording with", recorder.mimeType || "default codec");
 }
 
-function stop() {
+// Named stopCapture (not stop) to avoid shadowing window.stop().
+function stopCapture() {
   if (recorder && recorder.state !== "inactive") recorder.stop();
 }
 
@@ -216,7 +217,7 @@ function finalize() {
   const name = `recording-${stamp()}`;
   const base = `screen-recordings/${name}`;
   const durationMs = videoStartTime ? Date.now() - videoStartTime : 0;
-  const files = [{ url: track(blob), filename: `${base}.webm`, bytes: blob.size }];
+  const files = [{ url: trackBlobUrl(blob), filename: `${base}.webm`, bytes: blob.size }];
 
   // The bridge may have sent batches out of order: stable sort by t.
   qaEntries.sort((a, b) => a.t - b.t);
@@ -224,19 +225,19 @@ function finalize() {
   if (consoleEnabled) {
     const { text, json } = buildConsoleReport();
     files.push(
-      { url: track(new Blob([text], { type: "text/plain" })), filename: `${base}.console.log` },
-      { url: track(new Blob([json], { type: "application/json" })), filename: `${base}.console.json` }
+      { url: trackBlobUrl(new Blob([text], { type: "text/plain" })), filename: `${base}.console.log` },
+      { url: trackBlobUrl(new Blob([json], { type: "application/json" })), filename: `${base}.console.json` }
     );
   }
   if (networkEnabled) {
     files.push({
-      url: track(new Blob([buildHar()], { type: "application/json" })),
+      url: trackBlobUrl(new Blob([buildHar()], { type: "application/json" })),
       filename: `${base}.har`,
     });
   }
   if (stepsEnabled) {
     files.push({
-      url: track(new Blob([buildStepsReport()], { type: "text/markdown" })),
+      url: trackBlobUrl(new Blob([buildStepsReport()], { type: "text/markdown" })),
       filename: `${base}.steps.md`,
     });
   }
@@ -249,7 +250,7 @@ function finalize() {
       files.map((f) => f.filename.split("/").pop()).concat(`${name}.report.md`)
     );
     files.push({
-      url: track(new Blob([report], { type: "text/markdown" })),
+      url: trackBlobUrl(new Blob([report], { type: "text/markdown" })),
       filename: `${base}.report.md`,
     });
     // For the Jira/Linear issue (if configured; handled by the background).
@@ -265,7 +266,7 @@ function finalize() {
   cleanupStreams();
 }
 
-function track(blob) {
+function trackBlobUrl(blob) {
   const url = URL.createObjectURL(blob);
   blobUrls.push(url);
   return url;
@@ -370,11 +371,6 @@ function buildStepsReport() {
 // .report.md: the recording's executive summary (environment, counters,
 // markers, errors and steps), paste-ready for Jira/Linear.
 function buildRecordingReport(name, durationMs, fileNames) {
-  const fmtDur = (ms) => {
-    const s = Math.round(ms / 1000);
-    const h = Math.floor(s / 3600);
-    return (h ? pad(h) + ":" : "") + `${pad(Math.floor(s / 60) % 60)}:${pad(s % 60)}`;
-  };
   const chromeVersion = (navigator.userAgent.match(/Chrome\/([\d.]+)/) || [])[1] || "?";
   const count = (fn) => qaEntries.filter(fn).length;
 
@@ -393,7 +389,7 @@ function buildRecordingReport(name, durationMs, fileNames) {
   lines.push("");
   lines.push(`- URL: ${qaMeta.url}`);
   lines.push(`- Started: ${new Date(videoStartTime || Date.now()).toISOString()}`);
-  lines.push(`- Duration: ${fmtDur(durationMs)}`);
+  lines.push(`- Duration: ${formatElapsed(durationMs)}`);
   lines.push(`- Chrome: ${chromeVersion} · OS: ${navigator.platform}`);
   lines.push(`- Language: ${navigator.language} · Timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone}`);
   lines.push(`- User agent: ${navigator.userAgent}`);
