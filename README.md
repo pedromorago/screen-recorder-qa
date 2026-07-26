@@ -62,9 +62,17 @@ The full technical detail, written so a Claude Code session can read it before t
 
 ## Install
 
-1. Clone the repo
-2. `chrome://extensions` → enable **Developer mode**
-3. **Load unpacked** → select the repo folder
+No store account, no build step — about 30 seconds:
+
+1. Download the latest **[`screen-recorder-qa-*.zip`](https://github.com/pedro-morago/grabador-pantalla/releases/latest)** and unzip it
+2. Open `chrome://extensions` and turn on **Developer mode** (top right)
+3. **Load unpacked** → select the unzipped folder
+
+Chrome or any Chromium-based browser (Edge, Brave). Nothing is uploaded anywhere: the video, the logs and the reports go straight to your Downloads folder.
+
+Working on the code instead? Clone the repo and point **Load unpacked** at the repo folder — there is nothing to build.
+
+The zip is produced by [`scripts/package-extension.js`](./scripts/package-extension.js) (`npm run package`), which ships an explicit allowlist rather than "everything minus exclusions", fails if the manifest or any page references a file the package leaves out, and stamps a fixed timestamp so building from a tag reproduces the published zip byte for byte. A Playwright test unzips that artifact and loads *it* in Chromium, so what the release ships is what gets tested.
 
 ## E2E tests (Cypress + Playwright)
 
