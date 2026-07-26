@@ -60,6 +60,22 @@ A normal content script runs in an isolated world: it sees the same DOM but ANOT
 
 The full technical detail, written so a Claude Code session can read it before touching code, is in [`CLAUDE.md`](./CLAUDE.md).
 
+## Where it was tested: the bug bench
+
+**[bench.pedromorago.com](https://bench.pedromorago.com/)** — a checkout page
+built to break on demand, so this extension had something to be tested
+against. Real sites do not fail to order, and waiting for one to break the way
+you need it to is not testing.
+
+Every button provokes one thing the recorder has to capture — a 500 on a
+write, an uncaught `TypeError`, a request to a dead domain, a response that
+says `200 OK` and means the opposite — and prints what it did on screen. So
+you record the page, stop, and compare the downloaded `.console.log`, `.har`
+and `.steps.md` against what the page said happened. When the two disagree,
+one of them has a bug: that is how several of the ones fixed here were found.
+Its fake API runs in a Service Worker, so nothing you do there leaves your
+browser. Source: [qa-bug-bench](https://github.com/pedro-morago/qa-bug-bench).
+
 ## Install
 
 No store account, no build step — about 30 seconds:
