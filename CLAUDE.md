@@ -157,6 +157,19 @@ unpacked in Chrome.
    from the mime Chrome ACTUALLY gave: never hardcode `.webm` again. AAC is
    tried before Opus because Opus inside MP4 is legal but not every desktop
    player decodes it; WebM stays last so builds without MP4 still record.
+   MP4 alone is NOT enough: MediaRecorder can only write FRAGMENTED MP4
+   (moof+mdat, no sample table) and never writes the `mfra` random-access
+   index, because there is nothing to index until the recording ends. Chrome
+   and VLC walk the fragments themselves; Windows Media Player (Media
+   Foundation) REFUSES to seek without that table. `withMp4Index()` builds
+   it from the finished blob, copying the exact shape ffmpeg emits (tfra
+   version 1, one per track, 1-byte traf/trun/sample numbers) because that
+   is the shape verified to work. It reads only box HEADERS via blob.slice()
+   so a 300 MB capture is never loaded into memory, it is idempotent, it
+   leaves WebM alone, and a failure to index must never cost the recording.
+   Isolated empirically: same clip, only difference the index — with it the
+   scrub bar works, without it it does not. The audio codec was NOT the
+   cause.
 
 ## Testing
 

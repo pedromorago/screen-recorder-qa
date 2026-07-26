@@ -205,15 +205,31 @@ function stopCapture() {
   return false;
 }
 
-function finalize() {
-  // Cleared first: a throw below must not look like a pending save.
-  finalizePending = false;
+async function finalize() {
+  try {
+    await saveRecording();
+  } finally {
+    // In a finally, not at the top: saving awaits the MP4 indexing, and a
+    // stop during that window must answer "saving", not "it died". See the
+    // twin in offscreen.js.
+    finalizePending = false;
+  }
+}
+
+async function saveRecording() {
   clearInterval(timerInterval);
   setView("saving");
   log("finalizing;", chunks.length, "chunks");
   const type = (recorder && recorder.mimeType) || "video/webm";
-  const blob = new Blob(chunks, { type });
+  let blob = new Blob(chunks, { type });
   chunks = [];
+  // See offscreen.js: fragmented MP4 has no seek index and Windows Media
+  // Player needs one. Failing to index must not cost the recording.
+  try {
+    blob = await withMp4Index(blob, type);
+  } catch (e) {
+    log("could not index the MP4 (it still plays, but seeking may not):", e);
+  }
   if (blobUrl) URL.revokeObjectURL(blobUrl);
   blobUrl = URL.createObjectURL(blob);
 

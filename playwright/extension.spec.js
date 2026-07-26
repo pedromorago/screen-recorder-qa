@@ -402,6 +402,98 @@ test("the recorded container carries a duration, so the player can seek", async 
   expect(r.duration).toBeGreaterThan(0.5);
 });
 
+test("the MP4 gets an mfra index whose offsets point at real fragments", async ({ context, extensionId }) => {
+  // Regression: MediaRecorder can only write FRAGMENTED MP4 and never writes
+  // the mfra random-access table (there is nothing to index until the end).
+  // Chrome and VLC walk the fragments themselves; Windows Media Player
+  // (Media Foundation) REFUSES to seek without that table — confirmed on the
+  // same clip, which only became seekable once the index was appended.
+  const page = await context.newPage();
+  await page.goto(`chrome-extension://${extensionId}/offscreen.html`);
+
+  const r = await page.evaluate(async () => {
+    const mimeType = pickMime();
+    const canvas = document.createElement("canvas");
+    canvas.width = 320;
+    canvas.height = 180;
+    const c = canvas.getContext("2d");
+    let n = 0;
+    const paint = setInterval(() => {
+      c.fillStyle = `hsl(${(n++ * 9) % 360} 70% 45%)`;
+      c.fillRect(0, 0, 320, 180);
+    }, 33);
+    const chunks = [];
+    const rec = new MediaRecorder(canvas.captureStream(30), { mimeType });
+    rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+    const stopped = new Promise((res) => (rec.onstop = res));
+    rec.start(200); // small timeslice: several fragments in a short clip
+    await new Promise((res) => setTimeout(res, 2000));
+    rec.stop();
+    await stopped;
+    clearInterval(paint);
+
+    const raw = new Blob(chunks, { type: rec.mimeType || mimeType });
+    const indexed = await withMp4Index(raw, mimeType);
+    const twice = await withMp4Index(indexed, mimeType);
+    const webm = new Blob([new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 0, 0, 0, 0])], { type: "video/webm" });
+    const webmOut = await withMp4Index(webm, "video/webm");
+
+    // Walk the result independently of the production code.
+    const dv = new DataView(await indexed.arrayBuffer());
+    const boxes = [];
+    for (let o = 0; o + 8 <= dv.byteLength; ) {
+      let size = dv.getUint32(o);
+      const type = String.fromCharCode(dv.getUint8(o + 4), dv.getUint8(o + 5), dv.getUint8(o + 6), dv.getUint8(o + 7));
+      if (size === 1) size = Number(dv.getBigUint64(o + 8));
+      if (size < 8) break;
+      boxes.push({ type, offset: o });
+      o += size;
+    }
+    const moofs = new Set(boxes.filter((b) => b.type === "moof").map((b) => b.offset));
+    const mfra = boxes.find((b) => b.type === "mfra");
+    if (!mfra) return { hasMfra: false, moofs: moofs.size };
+
+    // Read every tfra entry and check its moof_offset lands on a fragment.
+    const entries = [];
+    let o = mfra.offset + 8;
+    const end = mfra.offset + dv.getUint32(mfra.offset);
+    while (o + 8 <= end) {
+      const size = dv.getUint32(o);
+      const type = String.fromCharCode(dv.getUint8(o + 4), dv.getUint8(o + 5), dv.getUint8(o + 6), dv.getUint8(o + 7));
+      if (type === "tfra") {
+        const version = dv.getUint8(o + 8);
+        const count = dv.getUint32(o + 20);
+        let p = o + 24;
+        for (let i = 0; i < count; i++) {
+          const off = version === 1 ? Number(dv.getBigUint64(p + 8)) : dv.getUint32(p + 4);
+          entries.push(off);
+          p += (version === 1 ? 16 : 8) + 3;
+        }
+      }
+      if (size < 8) break;
+      o += size;
+    }
+
+    return {
+      hasMfra: true,
+      moofs: moofs.size,
+      entries: entries.length,
+      allPointAtMoof: entries.length > 0 && entries.every((off) => moofs.has(off)),
+      grew: indexed.size > raw.size,
+      idempotent: twice.size === indexed.size,
+      webmUntouched: webmOut.size === webm.size,
+    };
+  });
+
+  expect(r.hasMfra).toBe(true);
+  expect(r.moofs).toBeGreaterThan(1); // actually fragmented, or the test proves nothing
+  expect(r.allPointAtMoof).toBe(true);
+  expect(r.grew).toBe(true);
+  // Indexing twice must not stack a second table, and WebM is none of its business.
+  expect(r.idempotent).toBe(true);
+  expect(r.webmUntouched).toBe(true);
+});
+
 test("a stop with nothing to save releases the capture instead of holding the tab", async ({ context, extensionId }) => {
   // Regression: recovering the background's state was NOT enough. A capture
   // whose recorder died keeps its tracks live, the tab stays held and Chrome
@@ -453,7 +545,7 @@ test("a report that throws costs its own file, never the video", async ({ contex
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extensionId}/offscreen.html`);
 
-  const r = await page.evaluate(() => {
+  const r = await page.evaluate(async () => {
     const sent = [];
     const realSend = chrome.runtime.sendMessage.bind(chrome.runtime);
     chrome.runtime.sendMessage = (m, ...rest) => {
@@ -480,7 +572,8 @@ test("a report that throws costs its own file, never the video", async ({ contex
     };
     let threw = null;
     try {
-      finalize();
+      // Awaited: finalize() is async since it indexes the MP4 before saving.
+      await finalize();
     } catch (e) {
       threw = e.message;
     }
