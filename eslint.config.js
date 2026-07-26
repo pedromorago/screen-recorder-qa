@@ -52,7 +52,7 @@ const issueReporterGlobals = {
 };
 
 module.exports = [
-  { ignores: ["node_modules/**", "cypress/screenshots/**", "test-results/**"] },
+  { ignores: ["node_modules/**", "cypress/screenshots/**", "test-results/**", "dist/**"] },
   js.configs.recommended,
   {
     rules: {
@@ -92,8 +92,14 @@ module.exports = [
     },
   },
   {
-    // Node-side files: configs and the tests' static server.
-    files: ["eslint.config.js", "cypress.config.js", "playwright.config.js", "cypress/support/static-server.js"],
+    // Node-side files: configs, the packaging script and the tests' static server.
+    files: [
+      "eslint.config.js",
+      "cypress.config.js",
+      "playwright.config.js",
+      "scripts/**/*.js",
+      "cypress/support/static-server.js",
+    ],
     languageOptions: {
       ecmaVersion: 2023,
       sourceType: "commonjs",

@@ -1,0 +1,74 @@
+name: release
+
+# Tag `vX.Y.Z` → packaged .zip published as a GitHub Release, so the
+# extension can be installed without cloning the repo.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+        env:
+          CYPRESS_INSTALL_BINARY: "0"
+
+      # A release is not the place to find out something is broken: the same
+      # gates as CI run again here, including the test that loads the packaged
+      # zip in Chromium.
+      - run: npm run lint
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:ext
+
+      - name: The tag must match the manifest version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          manifest="$(node -p "require('./manifest.json').version")"
+          if [ "$tag" != "$manifest" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match manifest version $manifest"
+            exit 1
+          fi
+
+      - run: npm run package
+
+      - name: Write the release notes
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          cat > release-notes.md <<EOF
+          ## Install (about 30 seconds, no store account needed)
+
+          1. Download \`screen-recorder-qa-$version.zip\` below and unzip it.
+          2. Open \`chrome://extensions\` and turn on **Developer mode** (top right).
+          3. Click **Load unpacked** and select the unzipped folder.
+
+          Works in Chrome and any Chromium-based browser (Edge, Brave). Nothing is
+          uploaded anywhere: the video, the logs and the reports are written
+          straight to your Downloads folder.
+
+          The zip is built by \`scripts/package-extension.js\` with a fixed
+          timestamp, so building it from this tag reproduces the published file
+          byte for byte.
+          EOF
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          gh release create "$GITHUB_REF_NAME" \
+            "dist/screen-recorder-qa-$version.zip" \
+            --title "Screen Recorder · QA mode $GITHUB_REF_NAME" \
+            --notes-file release-notes.md
