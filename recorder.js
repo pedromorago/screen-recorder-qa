@@ -16,6 +16,8 @@ let micStream = null;
 let audioCtx = null;
 let blobUrl = null;
 let timerInterval = null;
+// See offscreen.js: tells "already saving" apart from "died without saving".
+let finalizePending = false;
 
 function setView(state) {
   document.body.dataset.state = state; // picking | recording | saving
@@ -31,8 +33,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (!msg || msg.target !== "recorder") return false;
 
   if (msg.type === "rec:stop") {
-    stopCapture();
-    sendResponse({ ok: true });
+    // Same contract as off:stop: report whether a save is really under way.
+    sendResponse({ ok: true, stopping: stopCapture() });
     return false;
   }
 
@@ -93,6 +95,7 @@ async function start(streamId, systemAudio) {
   const cfg = await chrome.storage.local.get({ mic: false, quality: "medium" });
   const q = QUALITY[cfg.quality] || QUALITY.medium;
   log("start", { systemAudio, mic: cfg.mic, quality: cfg.quality });
+  finalizePending = false;
 
   displayStream = await navigator.mediaDevices.getUserMedia({
     audio: systemAudio
@@ -188,11 +191,23 @@ async function start(streamId, systemAudio) {
 }
 
 // Named stopCapture (not stop) to avoid shadowing window.stop().
+// Returns whether a save is under way (see the twin in offscreen.js).
 function stopCapture() {
-  if (recorder && recorder.state !== "inactive") recorder.stop();
+  if (recorder && recorder.state !== "inactive") {
+    finalizePending = true;
+    recorder.stop();
+    return true;
+  }
+  if (finalizePending) return true;
+  // Nothing to save: release the tracks so the capture does not leak
+  // (see the twin in offscreen.js).
+  cleanupStreams();
+  return false;
 }
 
 function finalize() {
+  // Cleared first: a throw below must not look like a pending save.
+  finalizePending = false;
   clearInterval(timerInterval);
   setView("saving");
   log("finalizing;", chunks.length, "chunks");
@@ -205,7 +220,7 @@ function finalize() {
   toBackground("sw:complete", {
     from: "recorder",
     url: blobUrl,
-    filename: `screen-recordings/recording-${stamp()}.webm`,
+    filename: `screen-recordings/recording-${stamp()}.${extForMime(type)}`,
     bytes: blob.size,
   });
   cleanupStreams();

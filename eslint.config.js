@@ -15,9 +15,30 @@ const captureCommonGlobals = {
   pad: "readonly",
   stamp: "readonly",
   pickMime: "readonly",
+  extForMime: "readonly",
   humanError: "readonly",
   buildAudioGraph: "readonly",
   formatElapsed: "readonly",
+};
+
+// offscreen.js internals driven straight from the Playwright specs: the
+// capture needs a real user gesture and cannot be faked, so the save path is
+// exercised by calling into it and setting its state.
+const offscreenInternals = {
+  start: "readonly",
+  stopCapture: "readonly",
+  finalize: "readonly",
+  buildHar: "writable",
+  displayStream: "readonly",
+  recorder: "writable",
+  chunks: "writable",
+  qaEntries: "writable",
+  qaMeta: "writable",
+  qaDropped: "writable",
+  videoStartTime: "writable",
+  consoleEnabled: "writable",
+  networkEnabled: "writable",
+  stepsEnabled: "writable",
 };
 
 // Defined in issue-reporter.js, consumed by background.js and options.js.
@@ -93,6 +114,11 @@ module.exports = [
         handleDownloadChanged: "readonly",
         reportIssueIfConfigured: "readonly",
         startTabRecording: "readonly",
+        stopRecording: "readonly",
+        ensureOffscreen: "readonly",
+        pickMime: "readonly",
+        extForMime: "readonly",
+        ...offscreenInternals,
       },
     },
     rules: {

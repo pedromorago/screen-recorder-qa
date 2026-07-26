@@ -311,3 +311,194 @@ test("startTabRecording without a user gesture fails with a notice and no stuck 
   expect(s.isRecording).toBe(false);
   expect(s.notice.text).toContain("Could not record this tab");
 });
+
+test("stopping a capture that died without saving recovers instead of hanging", async ({ context, sw }) => {
+  // Regression: the offscreen used to answer "ok" to off:stop even with no
+  // live recorder, so the background never saw the desync. isRecording stayed
+  // true for ever: every stop was answered "ok", nothing happened, and the
+  // user had no way to stop and no error. Reproduced by hand before the fix.
+  await sw.evaluate(() => ensureOffscreen());
+  await expect
+    .poll(async () =>
+      sw.evaluate(() => chrome.runtime.sendMessage({ target: "offscreen", type: "off:stop" }))
+    )
+    .toEqual({ ok: true, stopping: false });
+
+  // The background believes it is recording; the offscreen has nothing to save.
+  await sw.evaluate(() =>
+    chrome.storage.session.set({
+      isRecording: true,
+      startTime: Date.now(),
+      captureTarget: "offscreen",
+    })
+  );
+
+  await sw.evaluate(() => stopRecording());
+
+  await expect
+    .poll(async () => {
+      const s = await sw.evaluate(() =>
+        chrome.storage.session.get({ isRecording: false, notice: null })
+      );
+      return s.isRecording;
+    })
+    .toBe(false);
+
+  const { notice } = await sw.evaluate(() => chrome.storage.session.get({ notice: null }));
+  expect(notice.kind).toBe("error");
+  expect(notice.text).toContain("The recording was lost");
+});
+
+test("the recorded container carries a duration, so the player can seek", async ({ context, extensionId }) => {
+  // Regression: MediaRecorder writes WebM in streaming mode, with no Duration
+  // in the header and no Cues index, so the player reports duration Infinity
+  // and its scrub bar is useless — you cannot jump to the middle of your own
+  // recording. That is why pickMime() prefers MP4. If this ever falls back to
+  // WebM the recordings silently stop being navigable, which is why the
+  // assertion is on the duration a real player reads, not on the mime string.
+  const page = await context.newPage();
+  await page.goto(`chrome-extension://${extensionId}/offscreen.html`);
+
+  const r = await page.evaluate(async () => {
+    const mimeType = pickMime();
+    const canvas = document.createElement("canvas");
+    canvas.width = 320;
+    canvas.height = 180;
+    const c = canvas.getContext("2d");
+    let n = 0;
+    const paint = setInterval(() => {
+      c.fillStyle = `hsl(${(n++ * 9) % 360} 70% 45%)`;
+      c.fillRect(0, 0, 320, 180);
+    }, 33);
+
+    const chunks = [];
+    const rec = new MediaRecorder(canvas.captureStream(30), { mimeType });
+    rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+    const stopped = new Promise((res) => (rec.onstop = res));
+    rec.start(200);
+    await new Promise((res) => setTimeout(res, 1500));
+    rec.stop();
+    await stopped;
+    clearInterval(paint);
+
+    const blob = new Blob(chunks, { type: rec.mimeType || mimeType });
+    const url = URL.createObjectURL(blob);
+    const v = document.createElement("video");
+    v.src = url;
+    v.muted = true;
+    await new Promise((res) => {
+      v.onloadedmetadata = res;
+      v.onerror = res;
+      setTimeout(res, 5000);
+    });
+    const duration = v.duration;
+    URL.revokeObjectURL(url);
+    return { mimeType, ext: extForMime(mimeType), duration };
+  });
+
+  expect(r.mimeType).toContain("mp4");
+  expect(r.ext).toBe("mp4");
+  expect(Number.isFinite(r.duration)).toBe(true);
+  expect(r.duration).toBeGreaterThan(0.5);
+});
+
+test("a stop with nothing to save releases the capture instead of holding the tab", async ({ context, extensionId }) => {
+  // Regression: recovering the background's state was NOT enough. A capture
+  // whose recorder died keeps its tracks live, the tab stays held and Chrome
+  // refuses the next recording with "Cannot capture a tab with an active
+  // stream" — hit in real use right after the stop fix landed.
+  const page = await context.newPage();
+  await page.goto(`chrome-extension://${extensionId}/offscreen.html`);
+
+  const r = await page.evaluate(async () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 320;
+    canvas.height = 180;
+    canvas.getContext("2d").fillRect(0, 0, 320, 180);
+    const fake = canvas.captureStream(10);
+    // The real streamId cannot be obtained without a user gesture; what is
+    // under test is the lifecycle after the recorder dies, not the capture.
+    navigator.mediaDevices.getUserMedia = async () => fake;
+
+    await start({
+      streamId: "irrelevant",
+      systemAudio: false,
+      mic: false,
+      quality: "medium",
+      consoleCapture: false,
+      networkCapture: false,
+      stepsCapture: false,
+      tabUrl: "http://localhost/",
+      tabTitle: "t",
+    });
+    const tracks = displayStream.getTracks();
+    const before = tracks.map((t) => t.readyState);
+    recorder = null; // the recorder died without ever finalizing
+    const stopping = stopCapture();
+    return { before, stopping, after: tracks.map((t) => t.readyState) };
+  });
+
+  expect(r.before.every((s) => s === "live")).toBe(true);
+  expect(r.stopping).toBe(false);
+  expect(r.after.every((s) => s === "ended")).toBe(true);
+});
+
+test("a report that throws costs its own file, never the video", async ({ context, extensionId }) => {
+  // Regression, seen in the wild: chrome.runtime.getManifest() lived inside
+  // buildHar(), i.e. inside finalize(). When an extension reload orphaned the
+  // offscreen document its chrome.* APIs were gutted, the call threw
+  // "is not a function", finalize() died before sw:complete and the whole
+  // recording went with it — video included — leaving the state stuck.
+  // The version is now read once at load; this covers the general rule.
+  const page = await context.newPage();
+  await page.goto(`chrome-extension://${extensionId}/offscreen.html`);
+
+  const r = await page.evaluate(() => {
+    const sent = [];
+    const realSend = chrome.runtime.sendMessage.bind(chrome.runtime);
+    chrome.runtime.sendMessage = (m, ...rest) => {
+      sent.push(m);
+      try {
+        return realSend(m, ...rest);
+      } catch (e) {
+        return undefined;
+      }
+    };
+
+    const t0 = Date.now() - 20000;
+    videoStartTime = t0;
+    consoleEnabled = networkEnabled = stepsEnabled = true;
+    qaMeta = { url: "https://example.test/checkout", title: "Checkout" };
+    qaDropped = 0;
+    chunks = [new Blob(["video"], { type: "video/mp4" })];
+    recorder = { mimeType: "video/mp4;codecs=avc1.42E01E,opus" };
+    qaEntries = [{ kind: "nav", level: "info", t: t0 + 100, text: "https://example.test/checkout" }];
+
+    const realBuildHar = buildHar;
+    buildHar = () => {
+      throw new TypeError("chrome.runtime.getManifest is not a function");
+    };
+    let threw = null;
+    try {
+      finalize();
+    } catch (e) {
+      threw = e.message;
+    }
+    buildHar = realBuildHar;
+
+    const complete = sent.find((m) => m.type === "sw:complete");
+    const warn = sent.find((m) => m.type === "sw:warn");
+    return {
+      threw,
+      files: complete ? complete.files.map((f) => f.filename.split("/").pop()) : [],
+      warn: warn ? warn.message : null,
+    };
+  });
+
+  expect(r.threw).toBeNull();
+  // The video survives; only the report that threw is missing, and it is told.
+  expect(r.files.some((f) => f.endsWith(".mp4"))).toBe(true);
+  expect(r.files.some((f) => f.endsWith(".har"))).toBe(false);
+  expect(r.files.some((f) => f.endsWith(".console.log"))).toBe(true);
+  expect(r.warn).toContain(".har");
+});

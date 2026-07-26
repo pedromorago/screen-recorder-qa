@@ -12,6 +12,24 @@ let displayStream = null;
 let micStream = null;
 let audioCtx = null;
 let blobUrls = [];
+// A stop was requested and finalize() has not run yet. Tells "inactive
+// because it is already saving" apart from "died without saving": only the
+// second case must be recovered by the background (see off:stop).
+let finalizePending = false;
+
+// Read ONCE, at load, and defensively. An extension reload orphans this
+// document: it keeps running but its chrome.* APIs are gutted, and from then
+// on chrome.runtime.getManifest() throws "is not a function". That call used
+// to live inside buildHar(), i.e. inside finalize(), so it took the whole
+// recording down with it — video included. Nothing in the save path may
+// depend on a chrome.* call that can disappear underneath it.
+const EXT_VERSION = (() => {
+  try {
+    return chrome.runtime.getManifest().version;
+  } catch (e) {
+    return "unknown";
+  }
+})();
 
 // QA logs (console and network). They accumulate here and not in the
 // service worker: this document lives for the whole recording, the SW can die.
@@ -58,8 +76,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 
   if (msg.type === "off:stop") {
-    stopCapture();
-    sendResponse({ ok: true });
+    // Report whether a save is actually under way. If it is not, nobody will
+    // ever send sw:complete and the background has to recover: otherwise the
+    // state stays at "recording" forever and the user cannot stop anything.
+    sendResponse({ ok: true, stopping: stopCapture() });
     return false;
   }
 
@@ -120,6 +140,7 @@ async function start({ streamId, systemAudio, mic, quality, consoleCapture, netw
   qaMeta = { url: tabUrl || "", title: tabTitle || "" };
   qaEntries = [];
   qaDropped = 0;
+  finalizePending = false;
 
   // A tabCapture streamId is consumed with chromeMediaSource "tab".
   displayStream = await navigator.mediaDevices.getUserMedia({
@@ -200,11 +221,28 @@ async function start({ streamId, systemAudio, mic, quality, consoleCapture, netw
 }
 
 // Named stopCapture (not stop) to avoid shadowing window.stop().
+// Returns whether a save is under way: either it just stopped a live recorder,
+// or one was stopped earlier and finalize() has not run yet. stop() turns the
+// recorder inactive synchronously, so the state alone cannot tell them apart.
 function stopCapture() {
-  if (recorder && recorder.state !== "inactive") recorder.stop();
+  if (recorder && recorder.state !== "inactive") {
+    finalizePending = true;
+    recorder.stop();
+    return true;
+  }
+  if (finalizePending) return true;
+  // Nothing to save. Release whatever is still open: a capture whose recorder
+  // died keeps its tracks LIVE, the tab stays held, and Chrome refuses the
+  // next recording with "Cannot capture a tab with an active stream".
+  // Recovering the background's state is not enough if the stream leaks.
+  cleanupStreams();
+  return false;
 }
 
 function finalize() {
+  // Cleared first: if anything below throws, the next stop must report that
+  // nothing is being saved, so the background recovers instead of hanging.
+  finalizePending = false;
   log("finalizing;", chunks.length, "chunks");
   const type = (recorder && recorder.mimeType) || "video/webm";
   const blob = new Blob(chunks, { type });
@@ -217,48 +255,86 @@ function finalize() {
   const name = `recording-${stamp()}`;
   const base = `screen-recordings/${name}`;
   const durationMs = videoStartTime ? Date.now() - videoStartTime : 0;
-  const files = [{ url: trackBlobUrl(blob), filename: `${base}.webm`, bytes: blob.size }];
+  const files = [
+    { url: trackBlobUrl(blob), filename: `${base}.${extForMime(type)}`, bytes: blob.size },
+  ];
 
   // The bridge may have sent batches out of order: stable sort by t.
   qaEntries.sort((a, b) => a.t - b.t);
 
+  // The video is already in files[]. Every report from here on is built in
+  // ISOLATION: a report that throws is skipped and reported, but it never
+  // costs the user the recording. This is not defensive decoration — one
+  // throw inside buildHar() used to kill finalize() before sw:complete,
+  // losing the video, the logs AND leaving the state stuck at "recording".
+  const failed = [];
+  const safely = (label, build) => {
+    try {
+      return build();
+    } catch (e) {
+      log("could not build " + label + ":", e);
+      failed.push(label);
+      return null;
+    }
+  };
+
   if (consoleEnabled) {
-    const { text, json } = buildConsoleReport();
-    files.push(
-      { url: trackBlobUrl(new Blob([text], { type: "text/plain" })), filename: `${base}.console.log` },
-      { url: trackBlobUrl(new Blob([json], { type: "application/json" })), filename: `${base}.console.json` }
-    );
+    const console_ = safely(".console.log", buildConsoleReport);
+    if (console_) {
+      files.push(
+        { url: trackBlobUrl(new Blob([console_.text], { type: "text/plain" })), filename: `${base}.console.log` },
+        { url: trackBlobUrl(new Blob([console_.json], { type: "application/json" })), filename: `${base}.console.json` }
+      );
+    }
   }
   if (networkEnabled) {
-    files.push({
-      url: trackBlobUrl(new Blob([buildHar()], { type: "application/json" })),
-      filename: `${base}.har`,
-    });
+    const har = safely(".har", buildHar);
+    if (har) {
+      files.push({
+        url: trackBlobUrl(new Blob([har], { type: "application/json" })),
+        filename: `${base}.har`,
+      });
+    }
   }
   if (stepsEnabled) {
-    files.push({
-      url: trackBlobUrl(new Blob([buildStepsReport()], { type: "text/markdown" })),
-      filename: `${base}.steps.md`,
-    });
+    const steps = safely(".steps.md", buildStepsReport);
+    if (steps) {
+      files.push({
+        url: trackBlobUrl(new Blob([steps], { type: "text/markdown" })),
+        filename: `${base}.steps.md`,
+      });
+    }
   }
   let reportMsg = null;
   if (anyQaEnabled()) {
     // The report is generated last: it lists the other file names.
-    const report = buildRecordingReport(
-      name,
-      durationMs,
-      files.map((f) => f.filename.split("/").pop()).concat(`${name}.report.md`)
+    const report = safely(".report.md", () =>
+      buildRecordingReport(
+        name,
+        durationMs,
+        files.map((f) => f.filename.split("/").pop()).concat(`${name}.report.md`)
+      )
     );
-    files.push({
-      url: trackBlobUrl(new Blob([report], { type: "text/markdown" })),
-      filename: `${base}.report.md`,
-    });
-    // For the Jira/Linear issue (if configured; handled by the background).
-    reportMsg = {
-      title: "[QA Recorder] " + (qaMeta.title || qaMeta.url || name),
-      text: report,
-    };
+    if (report) {
+      files.push({
+        url: trackBlobUrl(new Blob([report], { type: "text/markdown" })),
+        filename: `${base}.report.md`,
+      });
+      // For the Jira/Linear issue (if configured; handled by the background).
+      reportMsg = {
+        title: "[QA Recorder] " + (qaMeta.title || qaMeta.url || name),
+        text: report,
+      };
+    }
     log("QA logs:", qaEntries.length, "entries");
+  }
+  if (failed.length) {
+    toBackground("sw:warn", {
+      message:
+        "The video was saved, but these reports could not be generated: " +
+        failed.join(", ") +
+        ".",
+    });
   }
 
   toBackground("sw:complete", { from: "offscreen", files, bytes: blob.size, report: reportMsg });
@@ -501,7 +577,7 @@ function buildHar() {
         version: "1.2",
         creator: {
           name: "Screen Recorder (QA mode)",
-          version: chrome.runtime.getManifest().version,
+          version: EXT_VERSION,
         },
         pages,
         entries,

@@ -1,6 +1,6 @@
 "use strict";
 
-/* exported QUALITY, pad, stamp, pickMime, humanError, buildAudioGraph, formatElapsed */
+/* exported QUALITY, pad, stamp, pickMime, extForMime, humanError, buildAudioGraph, formatElapsed */
 
 // Utilities shared by offscreen.js (tab recording), recorder.js
 // (screen/window recording) and popup.js. Loaded before them.
@@ -31,8 +31,20 @@ function formatElapsed(ms) {
   return (h > 0 ? pad(h) + ":" : "") + pad(m) + ":" + pad(s);
 }
 
+// MP4 FIRST, and not for compatibility: MediaRecorder writes WebM in
+// streaming mode, with no Duration in the header and no Cues index, so the
+// player reports duration Infinity and its scrub bar is useless — you cannot
+// jump to the middle of your own recording. The MP4 container carries the
+// real duration (measured: 4.98 s vs Infinity for the same clip). H.264 also
+// travels better than VP9 outside the browser. AAC first because Opus inside
+// MP4 is legal but not every desktop player decodes it; Chrome picks whatever
+// its build supports and WebM stays as the last resort.
 function pickMime() {
   const candidates = [
+    "video/mp4;codecs=avc1.42E01E,mp4a.40.2",
+    "video/mp4;codecs=avc1.42E01E,opus",
+    "video/mp4;codecs=avc1.42E01E",
+    "video/mp4",
     "video/webm;codecs=vp9,opus",
     "video/webm;codecs=vp8,opus",
     "video/webm;codecs=vp9",
@@ -40,6 +52,14 @@ function pickMime() {
     "video/webm",
   ];
   return candidates.find((t) => MediaRecorder.isTypeSupported(t)) || "";
+}
+
+// File extension for the container actually used. Never hardcode it: which
+// mime pickMime() lands on depends on the Chrome build.
+function extForMime(mimeType) {
+  if (/mp4/i.test(mimeType)) return "mp4";
+  if (/matroska/i.test(mimeType)) return "mkv";
+  return "webm";
 }
 
 function humanError(e) {

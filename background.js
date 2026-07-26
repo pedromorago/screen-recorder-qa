@@ -334,10 +334,23 @@ async function stopRecording() {
   if (!isRecording) return;
   log("stopping recording in", captureTarget);
   try {
-    if (captureTarget === "recorder") {
-      await sendTo("recorder", { type: "rec:stop" }, 5);
-    } else {
-      await sendTo("offscreen", { type: "off:stop" }, 5);
+    const res =
+      captureTarget === "recorder"
+        ? await sendTo("recorder", { type: "rec:stop" }, 5)
+        : await sendTo("offscreen", { type: "off:stop" }, 5);
+    // The context is alive but has nothing to save: its recorder died without
+    // finalizing, or its sw:complete never arrived. Either way no completion
+    // is coming, so recover here. Without this the state stays at "recording"
+    // forever: every stop is answered "ok", nothing happens and the user is
+    // left with no way to stop and no error.
+    if (!res || !res.stopping) {
+      log("nothing to stop: the capture has no save under way");
+      await setNotice(
+        "error",
+        "The recording was lost: the capture stopped on its own and could not be saved."
+      );
+      await setRecordingState(false);
+      if (captureTarget === "recorder") await closeRecorderWindow();
     }
   } catch (e) {
     log("the capture context is not responding to stop:", e);
