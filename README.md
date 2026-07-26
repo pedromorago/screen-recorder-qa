@@ -14,11 +14,11 @@ A Chrome extension (Manifest V3) that records your screen, a window or a tab, bu
 - **On-video annotations**: `Ctrl/Cmd+Shift+Y` or the popup's ✏️ button open a drawing canvas over the recorded tab (three colors, clear, Esc to exit). Since the strokes are DOM inside the page, the capture records them without touching the video pipeline — and drawing gestures don't pollute the steps log
 - **Recording report** `*.report.md`: environment (URL, Chrome, OS, language, timezone, duration), a summary of JS errors / broken resources / failed requests, markers, timeline errors and steps — the ticket almost writes itself
 - **Automatic Jira or Linear issue**: configure your credentials in the extension's Options (token kept in `chrome.storage.local` only, "Test connection" button) and, when each recording stops, the report becomes a new issue — the link shows up in the popup. Jira Cloud via REST (Basic auth with an API token) and Linear via GraphQL (the team key is resolved to an id automatically)
-- Alongside the `.webm` it downloads `*.console.log` (readable), `*.console.json` (structured), `*.har` (full network), `*.steps.md` and `*.report.md`
+- Alongside the video it downloads `*.console.log` (readable), `*.console.json` (structured), `*.har` (full network), `*.steps.md` and `*.report.md`
 - Records the full screen or a window through Chrome's native picker
 - Optional microphone, mixed with the captured audio
 - Three quality levels (bitrate/fps)
-- Exports `.webm`; MP4 conversion documented below
+- **Exports `.mp4`, and that is a bug fix, not a preference**: `MediaRecorder` writes WebM in streaming mode, with no duration in the header and no `Cues` index, so the player reports a duration of `Infinity` and its scrub bar is dead — you cannot jump to the middle of your own recording. Measured on the same clip: `Infinity` in WebM against 4.98 s in MP4. The container is chosen by probing (H.264+AAC → H.264+Opus → MP4 → WebM), the file extension follows whatever Chrome actually gave, and WebM survives as a last resort on builds without MP4
 
 Example `*.console.log`:
 

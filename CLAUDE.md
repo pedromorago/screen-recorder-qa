@@ -122,6 +122,41 @@ unpacked in Chrome.
    each group revokes its blobs separately (`off:cleanup`), the offscreen
    revokes NOTHING at finalize, and it is not closed while any of its
    groups are pending.
+9. Stop must REPORT whether there is anything to save. `off:stop` and
+   `rec:stop` answer `{ ok, stopping }`, and the background recovers
+   (notice + state cleared) when `stopping` is false. Answering a plain
+   `{ ok: true }` was a real hang: if the capture context is alive but its
+   recorder died without finalizing (or its `sw:complete` was lost), the
+   send succeeds, the background's catch never fires and `isRecording`
+   stays true FOREVER — every stop answered "ok", nothing happening, no
+   error and no way out but reloading the extension. Do not compute
+   `stopping` from `recorder.state` alone: `stop()` turns the recorder
+   inactive SYNCHRONOUSLY, so a second click while it is still saving
+   would report a false "it died". That is what `finalizePending` is for,
+   and it is cleared at the TOP of `finalize()` so a throw inside it stays
+   recoverable. Recovering the STATE is not enough either: a capture whose
+   recorder died keeps its tracks LIVE, the tab stays held and the next
+   recording is refused with "Cannot capture a tab with an active stream",
+   so the nothing-to-save branch of `stopCapture()` must also call
+   `cleanupStreams()`.
+11. NOTHING in the save path may call a `chrome.*` API that can vanish, and
+   no report may be able to take the video down with it. Both rules come
+   from the same real failure: `chrome.runtime.getManifest()` used to live
+   inside `buildHar()`, so when an extension reload orphaned the offscreen
+   document (it keeps running, its `chrome.*` gutted) the call threw "is not
+   a function", `finalize()` died before `sw:complete`, and the recording
+   was lost with the state stuck at "recording". The version is now read
+   ONCE at load into `EXT_VERSION`, and every report is built through
+   `safely()`: one that throws is skipped and named in an `sw:warn`, while
+   the video still ships. The video is the artifact that cannot be redone.
+10. `MediaRecorder` writes WebM in STREAMING mode: no `Duration` in the
+   header, no `Cues` index. The player reports `duration === Infinity` and
+   its scrub bar is dead — you cannot seek your own recording. Measured on
+   the same clip: `Infinity` (WebM, MKV) vs 4.98 s (every MP4 variant).
+   Hence `pickMime()` prefers MP4 and `extForMime()` derives the extension
+   from the mime Chrome ACTUALLY gave: never hardcode `.webm` again. AAC is
+   tried before Opus because Opus inside MP4 is legal but not every desktop
+   player decodes it; WebM stays last so builds without MP4 still record.
 
 ## Testing
 
@@ -130,11 +165,13 @@ unpacked in Chrome.
 2. Reload the extension after every change (no hot reload).
 3. Logs: service worker console (`[SW]`) and, under "Inspect views",
    `offscreen.html` (`[offscreen]`) and `recorder.html` (`[recorder]`).
-4. Output: `Downloads/screen-recordings/recording-<date>.webm` and,
-   depending on the toggles (tab flow, http/https page),
-   `recording-<date>.console.log` + `.console.json`, `.har`, `.steps.md`
-   and `.report.md`.
-   MP4: `ffmpeg -i input.webm -c:v libx264 -c:a aac output.mp4`.
+4. Output: `Downloads/screen-recordings/recording-<date>.mp4` (`.webm` only
+   on builds without MP4, see constraint 10) and, depending on the toggles
+   (tab flow, http/https page), `recording-<date>.console.log` +
+   `.console.json`, `.har`, `.steps.md` and `.report.md`.
+   Check the video is navigable: open it and drag the scrub bar to the
+   middle. If the player shows no total duration, the container came out
+   without one and the fix regressed.
 5. Test the console log: record a tab, run in its console
    `console.warn("hi"); setTimeout(() => { throw new Error("boom"); });`
    and check both appear in the `.console.log` with their offset.
