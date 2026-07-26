@@ -1,6 +1,6 @@
 # Screen Recorder · QA mode
 
-[![tests](https://github.com/pedro-morago/grabador-pantalla/actions/workflows/tests.yml/badge.svg)](https://github.com/pedro-morago/grabador-pantalla/actions/workflows/tests.yml)
+[![tests](https://github.com/pedro-morago/screen-recorder-qa/actions/workflows/tests.yml/badge.svg)](https://github.com/pedro-morago/screen-recorder-qa/actions/workflows/tests.yml)
 
 A Chrome extension (Manifest V3) that records your screen, a window or a tab, built for bug reporting: besides the video, it logs the page's console, JS errors, network and user steps — all synced with the recording — and condenses everything into a paste-ready report. No time limits, no watermark, no account.
 
@@ -80,7 +80,7 @@ browser. Source: [qa-bug-bench](https://github.com/pedro-morago/qa-bug-bench).
 
 No store account, no build step — about 30 seconds:
 
-1. Download the latest **[`screen-recorder-qa-*.zip`](https://github.com/pedro-morago/grabador-pantalla/releases/latest)** and unzip it
+1. Download the latest **[`screen-recorder-qa-*.zip`](https://github.com/pedro-morago/screen-recorder-qa/releases/latest)** and unzip it
 2. Open `chrome://extensions` and turn on **Developer mode** (top right)
 3. **Load unpacked** → select the unzipped folder
 
