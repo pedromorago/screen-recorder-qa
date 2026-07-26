@@ -18,7 +18,7 @@ A Chrome extension (Manifest V3) that records your screen, a window or a tab, bu
 - Records the full screen or a window through Chrome's native picker
 - Optional microphone, mixed with the captured audio
 - Three quality levels (bitrate/fps)
-- **Exports `.mp4`, and that is a bug fix, not a preference**: `MediaRecorder` writes WebM in streaming mode, with no duration in the header and no `Cues` index, so the player reports a duration of `Infinity` and its scrub bar is dead — you cannot jump to the middle of your own recording. Measured on the same clip: `Infinity` in WebM against 4.98 s in MP4. The container is chosen by probing (H.264+AAC → H.264+Opus → MP4 → WebM), the file extension follows whatever Chrome actually gave, and WebM survives as a last resort on builds without MP4
+- **Exports a `.mp4` you can actually scrub**, which took two fixes. First, `MediaRecorder` writes WebM in streaming mode with no duration in the header, so the player reports `Infinity` and the scrub bar is dead: measured on the same clip, `Infinity` in WebM against 4.98 s in MP4. Second, MP4 alone was not enough — `MediaRecorder` can only write *fragmented* MP4 and never writes the `mfra` random-access index, so Chrome and VLC could seek (they walk the fragments) but Windows Media Player refused to. The index is now built from the finished recording in plain JS, reading only box headers so a 300 MB capture is never loaded into memory. The container is chosen by probing (H.264+AAC → H.264+Opus → MP4 → WebM) and the extension follows whatever Chrome actually gave
 
 Example `*.console.log`:
 

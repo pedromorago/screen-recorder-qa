@@ -239,14 +239,31 @@ function stopCapture() {
   return false;
 }
 
-function finalize() {
-  // Cleared first: if anything below throws, the next stop must report that
-  // nothing is being saved, so the background recovers instead of hanging.
-  finalizePending = false;
+async function finalize() {
+  try {
+    await saveRecording();
+  } finally {
+    // Cleared in a finally, not at the top: saving now AWAITS the MP4
+    // indexing, and during that window a stop must still answer "saving"
+    // rather than "it died". A throw must still leave the next stop able to
+    // recover, which is what finally guarantees.
+    finalizePending = false;
+  }
+}
+
+async function saveRecording() {
   log("finalizing;", chunks.length, "chunks");
   const type = (recorder && recorder.mimeType) || "video/webm";
-  const blob = new Blob(chunks, { type });
+  let blob = new Blob(chunks, { type });
   chunks = [];
+  // Fragmented MP4 carries no random-access index and Windows Media Player
+  // refuses to seek without one. Indexing must never cost the recording:
+  // if it fails, the video ships exactly as it came out.
+  try {
+    blob = await withMp4Index(blob, type);
+  } catch (e) {
+    log("could not index the MP4 (it still plays, but seeking may not):", e);
+  }
   // NOTE: previous blobs are NOT revoked here. If the user chains
   // recordings, the previous recording's downloads may still be in flight
   // and revoking their URLs would interrupt them. Each group is revoked in
