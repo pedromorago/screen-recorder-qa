@@ -83,6 +83,9 @@
 
   .tip{margin-top:12px; font-size:11px; line-height:1.5; color:var(--muted)}
   .tip b{color:var(--text); font-weight:600}
+  /* Shown while recording too: the tip hides, the credit should not. */
+  .credit{margin-top:10px; font-size:10px; color:var(--muted); text-align:center}
+  .credit a{color:var(--muted)}
   @media (prefers-reduced-motion:reduce){ *{transition:none!important} .dot{animation:none!important} }
 </style>
 </head>
@@ -144,6 +147,8 @@
   </div>
 
   <div class="tip" id="tip"><b>Current tab</b> includes its audio automatically. For <b>screen or window</b>, check <b>Share audio</b> in the picker if you want system sound. Shortcuts: <b>Ctrl/Cmd+Shift+U</b> record/stop · <b>K</b> marker · <b>Y</b> draw. The report can create a Jira/Linear issue: set it up in the extension's <b>Options</b>.</div>
+
+  <div class="credit">Built by <a href="https://pedromorago.com" target="_blank" rel="noopener">Pedro Morago</a> · QA Engineer</div>
 
   <script src="capture-common.js"></script>
   <script src="popup.js"></script>

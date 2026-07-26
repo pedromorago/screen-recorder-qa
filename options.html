@@ -18,6 +18,8 @@
   input,select{width:100%;padding:9px 10px;background:var(--bg);color:var(--text);border:1px solid var(--border-hi);border-radius:8px;font-family:var(--mono);font-size:13px}
   input:focus-visible,select:focus-visible,button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
   .hint{font-size:11px;color:var(--muted);margin-top:4px;line-height:1.5}
+  .credit{margin-top:22px;font-size:11px;color:var(--muted);text-align:center}
+  .credit a{color:var(--muted)}
   .row{display:flex;align-items:center;gap:10px;margin-top:14px}
   .row input[type=checkbox]{width:auto}
   button{padding:10px 16px;border-radius:9px;border:1px solid var(--border-hi);background:var(--panel);color:var(--text);font-size:14px;font-weight:600;cursor:pointer}
@@ -73,6 +75,12 @@
       <button id="btnTest">Test connection</button>
     </div>
     <div id="status"></div>
+  </div>
+
+  <div class="credit">
+    Screen Recorder · QA mode — built by
+    <a href="https://pedromorago.com" target="_blank" rel="noopener">Pedro Morago</a> ·
+    <a href="https://github.com/pedro-morago/screen-recorder-qa" target="_blank" rel="noopener">source</a>
   </div>
 
   <script src="issue-reporter.js"></script>

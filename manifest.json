@@ -3,6 +3,8 @@
   "name": "Screen Recorder · QA mode",
   "version": "2.3.0",
   "description": "Record your screen, window or tab. QA mode: console, network (HAR), steps and a bug report synced with the video.",
+  "author": { "email": "pedro@pedromorago.com" },
+  "homepage_url": "https://pedromorago.com",
   "permissions": [
     "desktopCapture",
     "tabCapture",
