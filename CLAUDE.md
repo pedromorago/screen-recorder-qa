@@ -16,7 +16,16 @@ unpacked in Chrome.
   opens the picker and consumes the streamId in its OWN frame. Minimizes
   while recording and closes itself on save. If closed by hand, the
   recording is lost.
-- `capture-common.js`: shared utilities (quality, mime, audio mixing).
+- `capture-common.js`: shared utilities (quality, mime, audio mixing,
+  separate audio file).
+- Separate audio file (optional "Audio file" toggle, BOTH flows):
+  `startAudioRecorder`/`finishAudioRecorder` in capture-common.js run a
+  second MediaRecorder on the mixed audio track and ship the blob in the
+  same `files[]` group as `.m4a` (AAC via `pickAudioMime`; `.weba` when
+  the build lacks audio/mp4 — MediaRecorder cannot encode MP3, do not
+  promise `.mp3`). Best-effort BY CONTRACT: guarded start (warn and
+  continue), and the save path awaits the audio flush through a bounded
+  3 s race, so it can never cost the video (constraint 11).
 - `popup.html/js`: control UI. `permission.html/js`: one-time microphone
   permission grant.
 - QA logs (tab flow ONLY): `console-capture-main.js` (MAIN world: wraps
@@ -24,7 +33,15 @@ unpacked in Chrome.
   `network-capture-main.js` (MAIN world: wraps fetch and XMLHttpRequest;
   method, URL, status, duration, bounded headers) and `steps-capture.js`
   (ISOLATED world: clicks, field changes and submits; NEVER records typed
-  values) + `console-capture-bridge.js` (isolated world: batches entries
+  values; each step also carries `sel`, a paste-ready test selector —
+  test attributes first, id/name/aria-label only while unique in the
+  document, then visible text (≤60 chars; classic tags, ARIA
+  role=button/link/tab/menuitem widgets and custom elements), then a
+  bounded structural path, "" when nothing reliable exists. Flavor configurable in Options
+  (`chrome.storage.local.selectorFlavor`: cypress default | playwright);
+  the ISOLATED world has chrome.storage, so the script reads it itself and
+  keeps it fresh via onChanged — guarded, because the Cypress harness
+  injects it into pages with no chrome.* at all) + `console-capture-bridge.js` (isolated world: batches entries
   and relays them to the offscreen; shared by all; also emits the nav
   entries, including SPA navigations via the Navigation API —
   navigatesuccess DOES fire in the isolated world — with popstate and
@@ -36,7 +53,8 @@ unpacked in Chrome.
   background → `off:marker`. The offscreen accumulates the entries and on
   stop generates `.console.log` and `.console.json` (offsets `+mm:ss.mmm`
   relative to the video start), `.har` (HAR 1.2; navigations are the
-  "pages"), `.steps.md` (numbered navs + steps + markers) and
+  "pages"), `.steps.md` (numbered navs + steps + markers, each step with its
+  Cypress selector as inline code) and
   `.report.md` (environment, counters, markers, errors, files). In the
   `.console.log`, network only shows up if it failed (network/CORS error
   or status >= 400); the full network goes to the `.har`.
@@ -50,7 +68,8 @@ unpacked in Chrome.
 - Jira/Linear issues: `issue-reporter.js` (pure logic + fetch, NO
   chrome.*: loaded with importScripts in the SW, with <script> in
   options.html and in the tests) and `options.html/js` (credentials in
-  `chrome.storage.local.issueReporter`, test-connection button). On stop,
+  `chrome.storage.local.issueReporter`, test-connection button; also the
+  steps selector flavor, `selectorFlavor`, saved on change). On stop,
   the offscreen adds `report: {title, text}` to `sw:complete` and the
   background creates the issue if a provider with autoCreate is set
   ("ok" notice with the link in the popup). Jira REST v2 (v3 requires
@@ -179,7 +198,8 @@ unpacked in Chrome.
 3. Logs: service worker console (`[SW]`) and, under "Inspect views",
    `offscreen.html` (`[offscreen]`) and `recorder.html` (`[recorder]`).
 4. Output: `Downloads/screen-recordings/recording-<date>.mp4` (`.webm` only
-   on builds without MP4, see constraint 10) and, depending on the toggles
+   on builds without MP4, see constraint 10), `recording-<date>.m4a` if the
+   "Audio file" toggle is on, and, depending on the toggles
    (tab flow, http/https page), `recording-<date>.console.log` +
    `.console.json`, `.har`, `.steps.md` and `.report.md`.
    Check the video is navigable: open it and drag the scrub bar to the

@@ -77,6 +77,17 @@
     <div id="status"></div>
   </div>
 
+  <h1>Steps to reproduce</h1>
+
+  <div class="panel">
+    <label for="selectorFlavor">Selector flavor for the recorded steps</label>
+    <select id="selectorFlavor">
+      <option value="cypress">Cypress — cy.get('[data-cy="…"]'), cy.contains(…)</option>
+      <option value="playwright">Playwright — page.getByTestId('…'), page.getByRole(…)</option>
+    </select>
+    <p class="hint">Each recorded step in <code>.steps.md</code> ships with a paste-ready selector in this flavor. Saved as soon as you change it, and applies immediately — even to a recording in progress.</p>
+  </div>
+
   <div class="credit">
     Screen Recorder · QA mode — built by
     <a href="https://pedromorago.com" target="_blank" rel="noopener">Pedro Morago</a> ·

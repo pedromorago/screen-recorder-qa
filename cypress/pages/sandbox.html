@@ -15,5 +15,18 @@
     <button type="submit" id="btnSubmit">Place order</button>
   </form>
   <button id="btnDemo" class="primary">Buy <span>now</span></button>
+
+  <!-- Elements for the Cypress-selector chain (steps-capture.js): test
+       attribute beating an id, text-only identity, and the structural
+       fallback for twins nothing else can tell apart. -->
+  <button id="btnCy" data-cy="checkout">Checkout</button>
+  <button class="ghost">Cancel order</button>
+  <div id="list"><button>Same</button><button>Same</button></div>
+  <button class="icon" aria-label="Pause timer">⏸ 00:17</button>
+  <button data-testid="save">Save draft</button>
+  <span role="tab">Details tab</span>
+  <my-chip>Ready chip</my-chip>
+  <button class="long">Extend the subscription for another whole year</button>
+  <button class="quote">5 "Uncle Tom's Cabin" author Harriet Beecher</button>
 </body>
 </html>

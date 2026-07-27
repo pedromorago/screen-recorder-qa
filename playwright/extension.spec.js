@@ -595,3 +595,112 @@ test("a report that throws costs its own file, never the video", async ({ contex
   expect(r.files.some((f) => f.endsWith(".console.log"))).toBe(true);
   expect(r.warn).toContain(".har");
 });
+
+test("the separate audio file records for real and ships next to the video", async ({ context, extensionId }) => {
+  // Unlike the video capture, an audio-only MediaRecorder needs no user
+  // gesture, so this one CAN be automated end to end: a synthesized tone
+  // stands in for the mixed track, the real startAudioRecorder runs in the
+  // real offscreen document, and finalize() must ship the audio blob in the
+  // same files[] group as the video.
+  const page = await context.newPage();
+  await page.goto(`chrome-extension://${extensionId}/offscreen.html`);
+
+  const r = await page.evaluate(async () => {
+    const sent = [];
+    const realSend = chrome.runtime.sendMessage.bind(chrome.runtime);
+    chrome.runtime.sendMessage = (m, ...rest) => {
+      sent.push(m);
+      try {
+        return realSend(m, ...rest);
+      } catch (e) {
+        return undefined;
+      }
+    };
+
+    const ctx = new AudioContext();
+    await ctx.resume();
+    const osc = ctx.createOscillator();
+    const dest = ctx.createMediaStreamDestination();
+    osc.connect(dest);
+    osc.start();
+
+    const warns = [];
+    audioCapture = startAudioRecorder(dest.stream.getAudioTracks()[0], (m) => warns.push(m));
+    await new Promise((res) => setTimeout(res, 1500));
+
+    videoStartTime = Date.now() - 1500;
+    qaMeta = { url: "https://example.test/", title: "t" };
+    qaEntries = [];
+    qaDropped = 0;
+    chunks = [new Blob(["video"], { type: "video/mp4" })];
+    recorder = { mimeType: "video/mp4;codecs=avc1.42E01E,opus" };
+
+    // What stopCapture does: stop the audio recorder with the video one.
+    if (audioCapture && audioCapture.rec.state !== "inactive") audioCapture.rec.stop();
+    await finalize();
+    osc.stop();
+    ctx.close();
+
+    const complete = sent.find((m) => m.type === "sw:complete");
+    const files = complete ? complete.files : [];
+    const audioEntry = files.find((f) => /\.(m4a|weba)$/.test(f.filename));
+    let audioBytes = 0;
+    if (audioEntry) audioBytes = (await (await fetch(audioEntry.url)).blob()).size;
+    return {
+      warns,
+      files: files.map((f) => f.filename.split("/").pop()),
+      audioExt: audioEntry && audioEntry.filename.split(".").pop(),
+      audioBytes,
+    };
+  });
+
+  expect(r.warns).toEqual([]);
+  expect(r.files.some((f) => f.endsWith(".mp4"))).toBe(true);
+  // Present, named after the mime Chrome actually gave, and not empty.
+  expect(["m4a", "weba"]).toContain(r.audioExt);
+  expect(r.audioBytes).toBeGreaterThan(0);
+});
+
+test("a hung audio recorder delays the save a bounded time and never costs the video", async ({ context, extensionId }) => {
+  // The separate audio file's contract: best-effort AND bounded. If its
+  // onstop never fires, finalize() must still ship the video once the 3 s
+  // race expires, instead of hanging with the recording hostage.
+  const page = await context.newPage();
+  await page.goto(`chrome-extension://${extensionId}/offscreen.html`);
+
+  const r = await page.evaluate(async () => {
+    const sent = [];
+    chrome.runtime.sendMessage = (m) => sent.push(m);
+
+    videoStartTime = Date.now() - 1000;
+    qaMeta = { url: "https://example.test/", title: "t" };
+    qaEntries = [];
+    qaDropped = 0;
+    chunks = [new Blob(["video"], { type: "video/mp4" })];
+    recorder = { mimeType: "video/mp4;codecs=avc1.42E01E,opus" };
+    // An audio recorder dead in the worst way: stop() does nothing and
+    // its stopped promise never resolves.
+    audioCapture = {
+      rec: { state: "recording", stop() {} },
+      chunks: [],
+      stopped: new Promise(() => {}),
+      mimeType: "audio/mp4",
+    };
+
+    const t0 = performance.now();
+    await finalize();
+    const elapsed = performance.now() - t0;
+
+    const complete = sent.find((m) => m.type === "sw:complete");
+    return {
+      elapsed,
+      files: complete ? complete.files.map((f) => f.filename.split("/").pop()) : [],
+    };
+  });
+
+  // The video ships without the audio file, after the bounded wait.
+  expect(r.files.some((f) => f.endsWith(".mp4"))).toBe(true);
+  expect(r.files.some((f) => /\.(m4a|weba)$/.test(f))).toBe(false);
+  expect(r.elapsed).toBeGreaterThanOrEqual(2900);
+  expect(r.elapsed).toBeLessThan(8000);
+});

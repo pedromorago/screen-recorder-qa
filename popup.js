@@ -1,6 +1,7 @@
 "use strict";
 
 const micIn = document.getElementById("mic");
+const audioFileIn = document.getElementById("audioFile");
 const consoleIn = document.getElementById("consoleLog");
 const networkIn = document.getElementById("networkLog");
 const stepsIn = document.getElementById("stepsLog");
@@ -17,7 +18,7 @@ let timerInterval = null;
 
 function render({ isRecording, startTime, notice, captureTarget }) {
   document.body.dataset.state = isRecording ? "recording" : "idle";
-  micIn.disabled = consoleIn.disabled = networkIn.disabled = stepsIn.disabled = qualitySel.disabled = isRecording;
+  micIn.disabled = audioFileIn.disabled = consoleIn.disabled = networkIn.disabled = stepsIn.disabled = qualitySel.disabled = isRecording;
 
   // Markers and annotations only exist in the tab flow: a screen/window
   // recording has no tab to send them to, so the buttons would be no-ops.
@@ -85,6 +86,10 @@ micIn.addEventListener("change", async () => {
   chrome.tabs.create({ url: chrome.runtime.getURL("permission.html") });
 });
 
+audioFileIn.addEventListener("change", () =>
+  chrome.storage.local.set({ audioFile: audioFileIn.checked })
+);
+
 consoleIn.addEventListener("change", () =>
   chrome.storage.local.set({ consoleLog: consoleIn.checked })
 );
@@ -137,12 +142,14 @@ btnAnnotate.addEventListener("click", async () => {
 (async () => {
   const cfg = await chrome.storage.local.get({
     mic: false,
+    audioFile: false,
     quality: "medium",
     consoleLog: true,
     networkLog: true,
     stepsLog: true,
   });
   micIn.checked = cfg.mic;
+  audioFileIn.checked = cfg.audioFile;
   consoleIn.checked = cfg.consoleLog;
   networkIn.checked = cfg.networkLog;
   stepsIn.checked = cfg.stepsLog;
