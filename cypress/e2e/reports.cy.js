@@ -21,7 +21,7 @@ const SET_STATE = `
              status: 200, statusText: "OK", durationMs: 120, requestHeaders: [],
              responseHeaders: [{ name: "content-type", value: "application/json" }],
              contentType: "application/json", contentLength: 42, error: "" } },
-    { kind: "step", level: "info", t: 15000, text: "Click on <button#pay «Pay»>" },
+    { kind: "step", level: "info", t: 15000, text: "Click on <button#pay «Pay»>", sel: "cy.get('#pay')" },
     { kind: "nav", level: "info", t: 20000, text: "https://app.example/payment" },
     { kind: "marker", level: "warn", t: 20500, text: "User marker: the bug is here" },
     { kind: "net", level: "error", t: 21000,
@@ -118,10 +118,33 @@ describe("offscreen.js: report builders", () => {
       const md = win.eval("buildStepsReport()");
       expect(md).to.include("# Steps to reproduce — Checkout");
       expect(md).to.include("Values typed by the user are NEVER recorded");
+      expect(md).to.include("Selectors follow the Cypress priority");
       expect(md).to.include("1. [+00:00.000] Go to https://app.example/checkout");
-      expect(md).to.include("2. [+00:14.000] Click on <button#pay «Pay»>");
-      expect(md).to.include("3. [+00:19.000] Go to https://app.example/payment");
+      // The step's Cypress selector rides along as inline code…
+      expect(md).to.include("2. [+00:14.000] Click on <button#pay «Pay»> — `cy.get('#pay')`");
+      // …and entries without one get no dangling separator.
+      expect(md).to.include("3. [+00:19.000] Go to https://app.example/payment\n");
       expect(md).to.include("4. [+00:19.500] 💥 User marker");
+    });
+  });
+
+  it("the .steps.md header names the configured selector flavor", () => {
+    cy.window().then((win) => {
+      expect(win.eval("buildStepsReport()")).to.include("Selectors follow the Cypress priority");
+      win.eval('selectorFlavor = "playwright"');
+      expect(win.eval("buildStepsReport()")).to.include("Selectors follow the Playwright priority");
+    });
+  });
+
+  it("the .console.json carries each step's Cypress selector", () => {
+    cy.window().then((win) => {
+      const { json } = win.eval("buildConsoleReport()");
+      const parsed = JSON.parse(json);
+      const step = parsed.entries.find((e) => e.kind === "step");
+      expect(step.sel).to.equal("cy.get('#pay')");
+      // Non-step entries do not grow a sel key.
+      const warn = parsed.entries.find((e) => e.level === "warn" && e.kind === "console");
+      expect(warn).to.not.have.property("sel");
     });
   });
 

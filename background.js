@@ -170,10 +170,12 @@ async function startTabRecording() {
 
     const cfg = await chrome.storage.local.get({
       mic: false,
+      audioFile: false,
       quality: "medium",
       consoleLog: true,
       networkLog: true,
       stepsLog: true,
+      selectorFlavor: "cypress",
     });
     const injectable = injectableUrl(tab.url);
     const consoleCapture = cfg.consoleLog && injectable;
@@ -187,10 +189,12 @@ async function startTabRecording() {
       streamId,
       systemAudio: true,
       mic: cfg.mic,
+      audioFile: cfg.audioFile,
       quality: cfg.quality,
       consoleCapture,
       networkCapture,
       stepsCapture,
+      selectorFlavor: cfg.selectorFlavor,
       tabUrl: tab.url,
       tabTitle: tab.title,
     });
@@ -431,8 +435,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
 // A recording finished: download every produced file, register the batch
 // as a download group, surface partial failures, and hand the report to
-// the issue reporter. The offscreen sends files[] (video + QA logs); the
-// recorder still sends a bare url/filename pair.
+// the issue reporter. Both contexts send files[] (video + optional audio;
+// the offscreen adds the QA logs); the bare url/filename pair stays as a
+// fallback.
 async function handleRecordingComplete(msg) {
   const files = msg.files || [{ url: msg.url, filename: msg.filename }];
   log(

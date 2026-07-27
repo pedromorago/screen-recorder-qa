@@ -1,6 +1,6 @@
 "use strict";
 
-/* exported QUALITY, pad, stamp, pickMime, extForMime, withMp4Index, humanError, buildAudioGraph, formatElapsed */
+/* exported QUALITY, pad, stamp, pickMime, extForMime, pickAudioMime, audioExtForMime, startAudioRecorder, finishAudioRecorder, withMp4Index, humanError, buildAudioGraph, formatElapsed */
 
 // Utilities shared by offscreen.js (tab recording), recorder.js
 // (screen/window recording) and popup.js. Loaded before them.
@@ -60,6 +60,89 @@ function extForMime(mimeType) {
   if (/mp4/i.test(mimeType)) return "mp4";
   if (/matroska/i.test(mimeType)) return "mkv";
   return "webm";
+}
+
+// ---------- Separate audio file (optional) ----------
+
+// Same probing idea as pickMime, for the standalone audio file. AAC in MP4
+// first: a .m4a opens in any desktop player, which is the whole point of
+// shipping the audio on its own. MP3 is not a candidate because Chrome's
+// MediaRecorder cannot encode it (isTypeSupported("audio/mpeg") is false);
+// Opus/WebM stays as the fallback for builds without MP4 audio.
+function pickAudioMime() {
+  const candidates = [
+    "audio/mp4;codecs=mp4a.40.2",
+    "audio/mp4",
+    "audio/webm;codecs=opus",
+    "audio/webm",
+  ];
+  return candidates.find((t) => MediaRecorder.isTypeSupported(t)) || "";
+}
+
+// .m4a is the audio-only MP4 extension (a bare .mp4 with no video track
+// confuses players and shell previews), .weba the audio-only WebM one.
+function audioExtForMime(mimeType) {
+  return /mp4/i.test(mimeType) ? "m4a" : "weba";
+}
+
+// Second MediaRecorder on the mixed audio track, recording in parallel with
+// the video one. Best-effort BY CONTRACT: a failure warns and returns null,
+// it never propagates — the video pipeline must not depend on this existing.
+// `stopped` resolves once the recorder has flushed its last chunk (or
+// errored), so the save path can await the flush instead of trusting event
+// order between two recorders.
+function startAudioRecorder(audioTrack, onWarn) {
+  try {
+    const mimeType = pickAudioMime();
+    const rec = new MediaRecorder(
+      new MediaStream([audioTrack]),
+      mimeType ? { mimeType } : undefined
+    );
+    const chunks = [];
+    rec.ondataavailable = (e) => {
+      if (e.data && e.data.size) chunks.push(e.data);
+    };
+    const stopped = new Promise((resolve) => {
+      rec.onstop = resolve;
+      rec.onerror = (e) => {
+        onWarn(
+          "The separate audio file failed while recording: " +
+            ((e.error && e.error.message) || "unknown") +
+            ". The video is not affected."
+        );
+        resolve();
+      };
+    });
+    rec.start(1000);
+    return { rec, chunks, stopped, mimeType: rec.mimeType || mimeType || "audio/webm" };
+  } catch (e) {
+    onWarn(
+      "Could not start the separate audio file: " +
+        humanError(e) +
+        " The video records without it."
+    );
+    return null;
+  }
+}
+
+// Audio blob once the audio recorder has flushed, or null when there is
+// nothing (no audio capture, or it errored without producing chunks). The
+// wait is BOUNDED: if onstop never fires, the video must still ship, so
+// after 3 s the chunks are taken as they are (fragmented audio plays fine
+// truncated). Indexed like the video: audio/mp4 is fragmented too and
+// carries no mfra either.
+async function finishAudioRecorder(audio) {
+  if (!audio) return null;
+  if (audio.rec.state !== "inactive") audio.rec.stop();
+  await Promise.race([audio.stopped, new Promise((r) => setTimeout(r, 3000))]);
+  if (!audio.chunks.length) return null;
+  let blob = new Blob(audio.chunks, { type: audio.mimeType });
+  try {
+    blob = await withMp4Index(blob, audio.mimeType);
+  } catch (e) {
+    /* unindexed audio still plays */
+  }
+  return blob;
 }
 
 // ---------- MP4 random-access index (mfra) ----------

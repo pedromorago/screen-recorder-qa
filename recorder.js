@@ -14,10 +14,12 @@ let chunks = [];
 let displayStream = null;
 let micStream = null;
 let audioCtx = null;
-let blobUrl = null;
+let blobUrls = [];
 let timerInterval = null;
 // See offscreen.js: tells "already saving" apart from "died without saving".
 let finalizePending = false;
+// Optional separate audio file (see the twin in offscreen.js).
+let audioCapture = null;
 
 function setView(state) {
   document.body.dataset.state = state; // picking | recording | saving
@@ -42,9 +44,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     const urls = msg.urls || (msg.url ? [msg.url] : []);
     for (const url of urls) {
       URL.revokeObjectURL(url);
-      if (url === blobUrl) blobUrl = null;
+      blobUrls = blobUrls.filter((u) => u !== url);
     }
-    if (urls.length) log("blob revoked after download");
+    if (urls.length) log("blobs revoked after download:", urls.length);
     sendResponse({ ok: true });
     return false;
   }
@@ -92,10 +94,11 @@ chrome.desktopCapture.chooseDesktopMedia(
 // ---------- Capture and recording ----------
 
 async function start(streamId, systemAudio) {
-  const cfg = await chrome.storage.local.get({ mic: false, quality: "medium" });
+  const cfg = await chrome.storage.local.get({ mic: false, quality: "medium", audioFile: false });
   const q = QUALITY[cfg.quality] || QUALITY.medium;
-  log("start", { systemAudio, mic: cfg.mic, quality: cfg.quality });
+  log("start", { systemAudio, mic: cfg.mic, audioFile: cfg.audioFile, quality: cfg.quality });
   finalizePending = false;
+  audioCapture = null;
 
   displayStream = await navigator.mediaDevices.getUserMedia({
     audio: systemAudio
@@ -172,6 +175,20 @@ async function start(streamId, systemAudio) {
   recorder.start(1000);
   log("recording with", recorder.mimeType || "default codec");
 
+  // Separate audio file: second recorder on the mixed track, started after
+  // the video one (see the twin in offscreen.js).
+  if (cfg.audioFile && graph.audioTrack) {
+    audioCapture = startAudioRecorder(graph.audioTrack, (message) =>
+      toBackground("sw:warn", { message })
+    );
+    if (audioCapture) log("separate audio file with", audioCapture.mimeType);
+  } else if (cfg.audioFile) {
+    toBackground("sw:warn", {
+      message:
+        "This recording has no audio track (no system audio or microphone); the separate audio file is skipped.",
+    });
+  }
+
   // UI + timer
   setView("recording");
   const startedAt = Date.now();
@@ -195,6 +212,8 @@ async function start(streamId, systemAudio) {
 function stopCapture() {
   if (recorder && recorder.state !== "inactive") {
     finalizePending = true;
+    // Audio first: both flushes run while finalize() awaits the video's.
+    if (audioCapture && audioCapture.rec.state !== "inactive") audioCapture.rec.stop();
     recorder.stop();
     return true;
   }
@@ -230,17 +249,37 @@ async function saveRecording() {
   } catch (e) {
     log("could not index the MP4 (it still plays, but seeking may not):", e);
   }
-  if (blobUrl) URL.revokeObjectURL(blobUrl);
-  blobUrl = URL.createObjectURL(blob);
+  const base = `screen-recordings/recording-${stamp()}`;
+  const files = [{ url: trackBlobUrl(blob), filename: `${base}.${extForMime(type)}` }];
 
-  toBackground("sw:complete", {
-    from: "recorder",
-    url: blobUrl,
-    filename: `screen-recordings/recording-${stamp()}.${extForMime(type)}`,
-    bytes: blob.size,
-  });
+  // Separate audio file, if one was recording. Bounded await, local catch:
+  // it may cost its own file, never the video (see the twin in offscreen.js).
+  const audio = audioCapture;
+  audioCapture = null;
+  try {
+    const audioBlob = await finishAudioRecorder(audio);
+    if (audioBlob) {
+      files.push({
+        url: trackBlobUrl(audioBlob),
+        filename: `${base}.${audioExtForMime(audioBlob.type)}`,
+      });
+    }
+  } catch (e) {
+    log("could not build the separate audio file:", e);
+    toBackground("sw:warn", {
+      message: "The video was saved, but the separate audio file could not be generated.",
+    });
+  }
+
+  toBackground("sw:complete", { from: "recorder", files, bytes: blob.size });
   cleanupStreams();
-  // The service worker closes this window once the download finishes.
+  // The service worker closes this window once the downloads finish.
+}
+
+function trackBlobUrl(blob) {
+  const url = URL.createObjectURL(blob);
+  blobUrls.push(url);
+  return url;
 }
 
 function cleanupStreams() {
@@ -252,6 +291,14 @@ function cleanupStreams() {
     audioCtx.close().catch(() => {});
     audioCtx = null;
   }
+  if (audioCapture && audioCapture.rec.state !== "inactive") {
+    try {
+      audioCapture.rec.stop();
+    } catch (e) {
+      /* already stopping */
+    }
+  }
+  audioCapture = null;
   recorder = null;
 }
 

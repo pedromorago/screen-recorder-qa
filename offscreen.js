@@ -16,6 +16,9 @@ let blobUrls = [];
 // because it is already saving" apart from "died without saving": only the
 // second case must be recovered by the background (see off:stop).
 let finalizePending = false;
+// Optional separate audio file: handle from startAudioRecorder()
+// (capture-common.js), best-effort by contract.
+let audioCapture = null;
 
 // Read ONCE, at load, and defensively. An extension reload orphans this
 // document: it keeps running but its chrome.* APIs are gutted, and from then
@@ -41,6 +44,9 @@ let qaMeta = null; // { url, title }
 let qaEntries = []; // console/exception/rejection/resource/nav/net/step/marker
 let qaDropped = 0;
 let videoStartTime = null;
+// Only names the flavor in the .steps.md header; the selectors themselves
+// are built by steps-capture.js, which reads the setting on its own.
+let selectorFlavor = "cypress";
 
 const anyQaEnabled = () => consoleEnabled || networkEnabled || stepsEnabled;
 
@@ -130,9 +136,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
 // ---------- Tab capture ----------
 
-async function start({ streamId, systemAudio, mic, quality, consoleCapture, networkCapture, stepsCapture, tabUrl, tabTitle }) {
+async function start(msg) {
+  const { streamId, systemAudio, mic, audioFile, quality, consoleCapture, networkCapture, stepsCapture, tabUrl, tabTitle } = msg;
   const q = QUALITY[quality] || QUALITY.medium;
-  log("start", { systemAudio, mic, quality, consoleCapture, networkCapture, stepsCapture });
+  log("start", { systemAudio, mic, audioFile, quality, consoleCapture, networkCapture, stepsCapture });
+
+  selectorFlavor = msg.selectorFlavor === "playwright" ? "playwright" : "cypress";
 
   consoleEnabled = !!consoleCapture;
   networkEnabled = !!networkCapture;
@@ -141,6 +150,7 @@ async function start({ streamId, systemAudio, mic, quality, consoleCapture, netw
   qaEntries = [];
   qaDropped = 0;
   finalizePending = false;
+  audioCapture = null;
 
   // A tabCapture streamId is consumed with chromeMediaSource "tab".
   displayStream = await navigator.mediaDevices.getUserMedia({
@@ -218,6 +228,20 @@ async function start({ streamId, systemAudio, mic, quality, consoleCapture, netw
   recorder.start(1000);
   videoStartTime = Date.now(); // t0 for the QA log offsets
   log("recording with", recorder.mimeType || "default codec");
+
+  // Separate audio file: a second recorder on the SAME mixed track the
+  // video carries. Started after the video one so a failure here can
+  // never leave the recording half-set-up.
+  if (audioFile && graph.audioTrack) {
+    audioCapture = startAudioRecorder(graph.audioTrack, (message) =>
+      toBackground("sw:warn", { message })
+    );
+    if (audioCapture) log("separate audio file with", audioCapture.mimeType);
+  } else if (audioFile) {
+    toBackground("sw:warn", {
+      message: "This recording has no audio track; the separate audio file is skipped.",
+    });
+  }
 }
 
 // Named stopCapture (not stop) to avoid shadowing window.stop().
@@ -227,6 +251,8 @@ async function start({ streamId, systemAudio, mic, quality, consoleCapture, netw
 function stopCapture() {
   if (recorder && recorder.state !== "inactive") {
     finalizePending = true;
+    // Audio first: both flushes run while finalize() awaits the video's.
+    if (audioCapture && audioCapture.rec.state !== "inactive") audioCapture.rec.stop();
     recorder.stop();
     return true;
   }
@@ -275,6 +301,26 @@ async function saveRecording() {
   const files = [
     { url: trackBlobUrl(blob), filename: `${base}.${extForMime(type)}`, bytes: blob.size },
   ];
+
+  // Separate audio file, if one was recording. The await is bounded (see
+  // finishAudioRecorder) and the catch is local: it may cost its own
+  // file, never the video.
+  const audio = audioCapture;
+  audioCapture = null;
+  try {
+    const audioBlob = await finishAudioRecorder(audio);
+    if (audioBlob) {
+      files.push({
+        url: trackBlobUrl(audioBlob),
+        filename: `${base}.${audioExtForMime(audioBlob.type)}`,
+      });
+    }
+  } catch (e) {
+    log("could not build the separate audio file:", e);
+    toBackground("sw:warn", {
+      message: "The video was saved, but the separate audio file could not be generated.",
+    });
+  }
 
   // The bridge may have sent batches out of order: stable sort by t.
   qaEntries.sort((a, b) => a.t - b.t);
@@ -419,13 +465,15 @@ function buildConsoleReport() {
         entries: jsonEntries.length,
         dropped: qaDropped,
       },
-      // offsetMs: milliseconds since the video start.
+      // offsetMs: milliseconds since the video start. sel: the step's
+      // Cypress selector (steps only; JSON.stringify drops it elsewhere).
       entries: jsonEntries.map((e) => ({
         offsetMs: Math.max(0, e.t - (videoStartTime || e.t)),
         offset: offset(e.t),
         kind: e.kind,
         level: e.level,
         text: e.text,
+        sel: e.sel,
       })),
     },
     null,
@@ -444,7 +492,10 @@ function buildStepsReport() {
   const header =
     `# Steps to reproduce — ${qaMeta.title || qaMeta.url || "recording"}\n\n` +
     `Recording started at ${new Date(videoStartTime || Date.now()).toISOString()} on ${qaMeta.url}\n` +
-    "Offsets are relative to the video start. Values typed by the user are NEVER recorded.\n\n";
+    "Offsets are relative to the video start. Values typed by the user are NEVER recorded.\n" +
+    "Selectors follow the " +
+    (selectorFlavor === "playwright" ? "Playwright" : "Cypress") +
+    " priority: data-cy/data-test/data-testid, id, name, aria-label, visible text.\n\n";
 
   if (!steps.length) return header + "(no steps recorded during the recording)\n";
 
@@ -454,7 +505,7 @@ function buildStepsReport() {
       .map((e, i) => {
         const text =
           e.kind === "nav" ? `Go to ${e.text}` : e.kind === "marker" ? `💥 ${e.text}` : e.text;
-        return `${i + 1}. [${offset(e.t)}] ${text}`;
+        return `${i + 1}. [${offset(e.t)}] ${text}` + (e.sel ? ` — \`${e.sel}\`` : "");
       })
       .join("\n") +
     "\n"
@@ -614,5 +665,13 @@ function cleanupStreams() {
     audioCtx.close().catch(() => {});
     audioCtx = null;
   }
+  if (audioCapture && audioCapture.rec.state !== "inactive") {
+    try {
+      audioCapture.rec.stop();
+    } catch (e) {
+      /* already stopping */
+    }
+  }
+  audioCapture = null;
   recorder = null;
 }

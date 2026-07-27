@@ -49,6 +49,13 @@ $("btnSave").addEventListener("click", async () => {
   showStatus("ok", "Saved.");
 });
 
+// Saved on change, no button: the injected capture script picks it up
+// live via chrome.storage.onChanged.
+$("selectorFlavor").addEventListener("change", async () => {
+  await chrome.storage.local.set({ selectorFlavor: $("selectorFlavor").value });
+  showStatus("ok", "Selector flavor saved.");
+});
+
 $("btnTest").addEventListener("click", async () => {
   showStatus("ok", "Testing…");
   try {
@@ -60,6 +67,10 @@ $("btnTest").addEventListener("click", async () => {
 });
 
 (async () => {
-  const { issueReporter } = await chrome.storage.local.get({ issueReporter: null });
+  const { issueReporter, selectorFlavor } = await chrome.storage.local.get({
+    issueReporter: null,
+    selectorFlavor: "cypress",
+  });
   fillForm(issueReporter || { provider: "none" });
+  $("selectorFlavor").value = selectorFlavor;
 })();

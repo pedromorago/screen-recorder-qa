@@ -53,6 +53,106 @@ describe("steps-capture.js (isolated world)", () => {
     cy.waitForEntry((e) => e.kind === "step" && e.text.includes("Form submitted <form#formDemo"));
   });
 
+  it("the selector prefers a test attribute over the element's own id", () => {
+    cy.get("#btnCy").click();
+    cy.waitForEntry((e) => e.kind === "step" && e.sel === "cy.get('[data-cy=\"checkout\"]')");
+  });
+
+  it("with no test attribute, a unique id becomes the selector", () => {
+    cy.get("#btnDemo").click();
+    cy.waitForEntry((e) => e.kind === "step" && e.sel === "cy.get('#btnDemo')");
+  });
+
+  it("a field with a name gets tag[name=…], and the value stays out of the selector", () => {
+    cy.get("input[name=email]").type("pedro@example.com").blur();
+    cy.waitForEntry((e) => e.kind === "step" && e.sel === "cy.get('input[name=\"email\"]')");
+    cy.window().should((win) => {
+      expect(JSON.stringify(win.__entries)).to.not.include("pedro@example.com");
+    });
+  });
+
+  it("data-testid also wins in the Cypress flavor", () => {
+    cy.get("[data-testid=save]").click();
+    cy.waitForEntry((e) => e.kind === "step" && e.sel === "cy.get('[data-testid=\"save\"]')");
+  });
+
+  it("the Playwright flavor spells the same decisions as Playwright locators", () => {
+    // Fresh page: the flavor is read at install time from chrome.storage,
+    // which this test stubs BEFORE injecting the real script (in the other
+    // tests there is no chrome.* at all and the Cypress default stands).
+    cy.visit("/cypress/pages/sandbox.html");
+    cy.window().then((win) => {
+      win.chrome = {
+        storage: {
+          local: { get: (defaults, cb) => cb({ selectorFlavor: "playwright" }) },
+          onChanged: { addListener() {} },
+        },
+      };
+    });
+    cy.startEntryCollector();
+    cy.injectExtensionScript("steps-capture.js");
+
+    cy.get("[data-testid=save]").click();
+    cy.waitForEntry((e) => e.sel === "page.getByTestId('save')");
+    cy.get("#btnCy").click();
+    cy.waitForEntry((e) => e.sel === "page.locator('[data-cy=\"checkout\"]')");
+    cy.get("#btnDemo").click();
+    cy.waitForEntry((e) => e.sel === "page.locator('#btnDemo')");
+    cy.get("button.icon").click();
+    cy.waitForEntry((e) => e.sel === "page.getByLabel('Pause timer')");
+    cy.get("button.ghost").click();
+    cy.waitForEntry((e) => e.sel === "page.getByRole('button', { name: 'Cancel order' })");
+    cy.get("[role=tab]").click();
+    cy.waitForEntry((e) => e.sel === "page.getByRole('tab', { name: 'Details tab' })");
+    cy.get("my-chip").click();
+    cy.waitForEntry((e) => e.sel === "page.locator('my-chip', { hasText: 'Ready chip' })");
+  });
+
+  it("an aria-label beats dynamic visible text (the timer-button case)", () => {
+    cy.get("button.icon").click();
+    cy.waitForEntry((e) => e.kind === "step" && e.sel === "cy.get('[aria-label=\"Pause timer\"]')");
+  });
+
+  it("texts up to 60 chars still make a cy.contains selector", () => {
+    cy.get("button.long").click();
+    cy.waitForEntry(
+      (e) => e.kind === "step" && e.sel === "cy.contains('button', 'Extend the subscription for another whole year')"
+    );
+  });
+
+  it("quotes in the text are escaped into a pasteable selector", () => {
+    cy.get("button.quote").click();
+    cy.waitForEntry(
+      (e) => e.kind === "step" && e.sel === "cy.contains('button', '5 \"Uncle Tom\\'s Cabin\" author Harriet Beecher')"
+    );
+  });
+
+  it("a role=tab widget gets a role-scoped text selector", () => {
+    cy.get("[role=tab]").click();
+    cy.waitForEntry((e) => e.kind === "step" && e.sel === "cy.contains('[role=\"tab\"]', 'Details tab')");
+  });
+
+  it("a custom element with text identity gets scoped to its tag", () => {
+    cy.get("my-chip").click();
+    cy.waitForEntry((e) => e.kind === "step" && e.sel === "cy.contains('my-chip', 'Ready chip')");
+  });
+
+  it("an element whose only identity is its text becomes cy.contains", () => {
+    cy.get("button.ghost").click();
+    cy.waitForEntry((e) => e.kind === "step" && e.sel === "cy.contains('button', 'Cancel order')");
+  });
+
+  it("twins nothing can tell apart fall back to an anchored structural path", () => {
+    cy.get("#list button").eq(1).click();
+    cy.waitForEntry((e) => e.kind === "step" && e.sel === "cy.get('#list > button:nth-of-type(2)')");
+  });
+
+  it("the submit step carries the form's selector", () => {
+    cy.get("#formDemo").then(($f) => $f.on("submit", (e) => e.preventDefault()));
+    cy.get("#btnSubmit").click();
+    cy.waitForEntry((e) => e.kind === "step" && e.text.includes("Form submitted") && e.sel === "cy.get('#formDemo')");
+  });
+
   it("double injection does not duplicate steps (install guard)", () => {
     cy.injectExtensionScript("steps-capture.js"); // second injection
     cy.get("#btnDemo").click();
