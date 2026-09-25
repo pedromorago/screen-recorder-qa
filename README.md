@@ -1,4 +1,4 @@
-# Screen Recorder · QA mode
+# Screen Recorder (QA mode)
 
 [![tests](https://github.com/pedromorago/screen-recorder-qa/actions/workflows/tests.yml/badge.svg)](https://github.com/pedromorago/screen-recorder-qa/actions/workflows/tests.yml)
 
