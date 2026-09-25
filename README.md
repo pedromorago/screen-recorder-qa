@@ -1,6 +1,6 @@
 # Screen Recorder · QA mode
 
-[![tests](https://github.com/pedro-morago/screen-recorder-qa/actions/workflows/tests.yml/badge.svg)](https://github.com/pedro-morago/screen-recorder-qa/actions/workflows/tests.yml)
+[![tests](https://github.com/pedromorago/screen-recorder-qa/actions/workflows/tests.yml/badge.svg)](https://github.com/pedromorago/screen-recorder-qa/actions/workflows/tests.yml)
 
 A Chrome extension (Manifest V3) that records your screen, a window or a tab, built for bug reporting: besides the video, it logs the page's console, JS errors, network and user steps — all synced with the recording — and condenses everything into a paste-ready report. No time limits, no watermark, no account.
 
@@ -41,7 +41,7 @@ The API's 500 and the `TypeError` it causes, 130 ms apart, in the same file: the
 
 ## Why it exists
 
-A portfolio exercise: reproduce the mechanics of tools like Nimbus or Loom using only native browser APIs, no external dependencies. The screen-recorder market is saturated and better free alternatives exist (Screenity, for one), so the point is not competing with them. The point is understanding how Manifest V3 behaves when the capture has to survive in the background, and debugging it with the same method I use in QA: isolate the symptom, read the console, take nothing for granted.
+I used Nimbus to record bugs for my reports. When it changed, I rebuilt the features I relied on here, using only native browser APIs and no external dependencies, and then added the ones I wanted: console and network logs synced with the video, and steps with test selectors ready to paste into a test. It was also a way to learn how Manifest V3 behaves when a capture has to survive in the background, and to debug it with the same method I use in QA: isolate the symptom, read the console, take nothing for granted.
 
 ## Decisions and dead ends
 
@@ -75,13 +75,13 @@ you record the page, stop, and compare the downloaded `.console.log`, `.har`
 and `.steps.md` against what the page said happened. When the two disagree,
 one of them has a bug: that is how several of the ones fixed here were found.
 Its fake API runs in a Service Worker, so nothing you do there leaves your
-browser. Source: [qa-bug-bench](https://github.com/pedro-morago/qa-bug-bench).
+browser. Source: [qa-bug-bench](https://github.com/pedromorago/qa-bug-bench).
 
 ## Install
 
 No store account, no build step — about 30 seconds:
 
-1. Download the latest **[`screen-recorder-qa-*.zip`](https://github.com/pedro-morago/screen-recorder-qa/releases/latest)** and unzip it
+1. Download the latest **[`screen-recorder-qa-*.zip`](https://github.com/pedromorago/screen-recorder-qa/releases/latest)** and unzip it
 2. Open `chrome://extensions` and turn on **Developer mode** (top right)
 3. **Load unpacked** → select the unzipped folder
 
